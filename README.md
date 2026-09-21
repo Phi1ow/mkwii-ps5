@@ -19,7 +19,7 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 | Feature | Status |
 | --- | --- |
 | Native GPU rendering | AGC backend |
-| Frame rate | 60 FPS reported on PS5 Pro after kstuff is paused |
+| Frame rate | 60 FPS reported on PS5 / PS5 Pro after kstuff is paused |
 | Controller | DualSense, GameCube button mapping |
 | Saves | Local NAND in `UserData/NAND` |
 | Game region | PAL, RMCP01 |
