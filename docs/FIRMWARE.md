@@ -1,11 +1,11 @@
-# Firmware variants / Variantes de firmware
+# Package variants / Variantes du paquet
 
-The supplied package contains 41 folders under `Backport/`, enumerated in [firmware-variants.json](firmware-variants.json). Each holds an `eboot.bin`, `sce_module/libc.prx` and `sce_sys/param.json`; it is an overlay, not a complete application.
+Compatible with **PS5 and PS5 Pro** (jailbroken consoles).
 
-Le paquet fourni contient 41 dossiers dans `Backport/`, listés dans [firmware-variants.json](firmware-variants.json). Chacun contient `eboot.bin`, `sce_module/libc.prx` et `sce_sys/param.json` : il s'agit de fichiers de remplacement, pas d'une application complète.
+The backport archive provides replacement `eboot.bin` and `sce_sys/param.json` files. It is an overlay, not a standalone application: keep the common files from the main package. Select the variant matching your console and provide your own matching signed `sce_module/libc.prx`; Sony libraries are not distributed.
 
-Only PS5 Pro firmware 9.40 is documented as tested. Folder names and patched version metadata do not demonstrate compatibility. Preserve matching executable, runtime and metadata together; installation instructions for these variants still need validation.
+Compatible avec **PS5 et PS5 Pro** jailbreakées.
 
-Seule la PS5 Pro en firmware 9.40 est documentée comme testée. Le nom du dossier et la modification des métadonnées de version ne démontrent pas la compatibilité. Conserver ensemble l'exécutable, la bibliothèque et les métadonnées correspondantes ; la procédure d'installation de ces variantes reste à valider.
+L'archive de backports fournit les fichiers de remplacement `eboot.bin` et `sce_sys/param.json`. Ce n'est pas une application complète : conserver les fichiers communs du paquet principal. Choisir la variante adaptée à sa console et fournir sa propre bibliothèque signée `sce_module/libc.prx` correspondante ; les bibliothèques Sony ne sont pas distribuées.
 
-The release retains the recompiled firmware overlays, without separate disc files or Sony libraries. Embedded code/data remains in the executable. Les variantes recompilées sont conservées ; aucun fichier disque séparé ni bibliothèque Sony ne sont inclus.
+No separate disc files or personal saves are included. Embedded code/data remains in the recompiled executable. Aucun fichier disque séparé ni sauvegarde personnelle ne sont inclus ; le binaire recompilé conserve son code et ses données intégrés.

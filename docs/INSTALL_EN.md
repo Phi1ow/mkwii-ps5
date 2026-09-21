@@ -27,7 +27,7 @@ The current build generates game code and data from the disc. Do not publish ext
 ## Requirements
 
 - A jailbroken PS5 with an ELF loader (port 9021) and an FTP server.  
-  Tested only on **PS5 Pro, firmware 9.40**. A standard PS5 has not been tested.
+  Compatible with **PS5 and PS5 Pro**.
 - **kstuff**, sent after a clean console boot. Tested version: EchoStretch kstuff v1.6.7.
 - **ShadowMountPlus 1.6beta16**. Version 1.7alpha refused the title information during our tests.  
   ShadowMountPlus is also used to pause kstuff while the game is running (step 4, required for 60 FPS).
@@ -168,6 +168,7 @@ To report a crash or bug, retrieve this folder through FTP and send it together 
   Do not modify `DATA` or `UserData`.
 - **Uninstall:** delete the `/data/PPSA99611` folder through FTP. This will also delete all save data.  
   Removal of the home-screen icon depends on ShadowMountPlus and has not been tested with this version.
+
 
 
 

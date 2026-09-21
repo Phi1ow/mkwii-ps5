@@ -29,7 +29,7 @@ La compilation actuelle génère des données et du code à partir du disque. Ne
 ## Prérequis
 
 - Une PS5 jailbreakée avec un chargeur d'ELF (port 9021) et un serveur FTP.
-  Testé uniquement sur **PS5 Pro, firmware 9.40**. Une PS5 standard n'a pas été testée.
+  Compatible avec **PS5 et PS5 Pro**.
 - **kstuff**, envoyé après un démarrage propre de la console. Version testée : EchoStretch kstuff v1.6.7.
 - **ShadowMountPlus 1.6beta16**. Les versions 1.7alpha ont refusé les informations du titre pendant nos essais.
   ShadowMountPlus sert aussi à mettre kstuff en pause pendant le jeu (étape 4, indispensable pour les 60 images/s).
@@ -157,6 +157,7 @@ et l'envoyer avec une description (moment du bug, circuit, photo de l'écran si 
   Ne pas toucher à `DATA` ni à `UserData`.
 - **Désinstaller** : supprimer le dossier `/data/PPSA99611` par FTP. Cela efface aussi les sauvegardes.
   Le retrait de l'icône dépend de ShadowMountPlus et n'a pas été testé avec cette version.
+
 
 
 
