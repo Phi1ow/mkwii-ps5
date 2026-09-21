@@ -1,0 +1,35 @@
+name: Import prepared source snapshot
+on:
+  push:
+    paths:
+      - '.github/workflows/import-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and extract source snapshot
+        run: |
+          echo 'ab54e2517cd6969f3c6644113db322745828d968ac62c25e8b7aa2c042640c60  mkwii-ps5-source.zip' | sha256sum --check
+          python3 - <<'PY'
+          import pathlib, zipfile
+          root = pathlib.Path.cwd().resolve()
+          with zipfile.ZipFile('mkwii-ps5-source.zip') as archive:
+              for item in archive.infolist():
+                  path = (root / item.filename).resolve()
+                  if not path.is_relative_to(root) or '.git' in pathlib.Path(item.filename).parts or '.github' in pathlib.Path(item.filename).parts:
+                      raise ValueError(item.filename)
+              archive.extractall(root)
+          PY
+      - name: Commit source tree
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md README_FR.md LICENSE THIRD-PARTY-NOTICES.md .gitignore sources.lock.json docs ps5 patches dependency-additions tools
+          git rm mkwii-ps5-source.zip
+          git commit -m 'Import PS5 port sources and bilingual documentation'
+          git push origin HEAD:main
