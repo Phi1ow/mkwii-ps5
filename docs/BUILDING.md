@@ -34,3 +34,9 @@ Scripts expect local tools beneath `.tools/` and default to a Visual Studio CMak
 These are existing entry points, **not a validated clean-build recipe**. The shader outputs, generated import stubs and supporting .NET tools also need preparation; the original development tree already contains those outputs. The local package builder includes the locally supplied runtime library, so its output must not be uploaded blindly.
 
 The final supplied executable differs from the compared local builds. Its SHA-256 is recorded in `docs/RELEASE-NOTES.md`. Source-to-binary correspondence and a complete clean build remain to be established before publishing this as a reproducible release.
+
+## Keep game-derived outputs local
+
+`generate-data-init` embeds the original DOL/REL sections into generated source/blob files, then into the executable. Therefore, even a package without `DATA/` contains game-derived data. Do not upload `generated/`, translated game code, blob files or resulting game executables. The previously published binaries have been withdrawn.
+
+A future binary distribution without these raw sections requires a build/runtime change to load and verify the user's own local game files. This is not implemented by merely removing the DATA folder. The source checkout itself excludes generated game files.

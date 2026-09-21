@@ -6,7 +6,19 @@ ce n'est pas un émulateur.
 
 **Les données du jeu ne sont pas fournies.** Il faut sa propre copie de Mario Kart Wii PAL.
 
-## Contenu du dossier
+## Ce que vous devez fournir vous-même
+
+Le dépôt est distribué sous forme de sources uniquement. Les anciens binaires ont été retirés car ils embarquaient des données extraites du jeu. Les étapes d'installation ci-dessous concernent uniquement un paquet construit localement ; télécharger les sources GitHub ne fournit pas un jeu prêt à lancer.
+
+1. Utiliser son propre disque Mario Kart Wii **PAL, RMCP01**. Pour créer une image à partir du disque, consulter le [guide officiel Dolphin](https://dolphin-emu.org/docs/guides/ripping-games/), qui décrit notamment CleanRip. Aucun lien vers une copie du jeu n'est fourni ici.
+2. Copier l'image obtenue sur son PC, puis l'ajouter à la liste des jeux de Dolphin. L'extraction de la partition est expliquée à l'étape 1 ci-dessous.
+3. Conserver l'image, `DATA/`, `main.dol` et `StaticR.rel` en local. Ils ne doivent pas être envoyés sur GitHub, même pour signaler un bug.
+4. Pour construire le portage, suivre les [notes de compilation](BUILDING.md). Le script `ps5/Prepare-Game.ps1 -DiscImage <chemin>` vérifie les empreintes de la révision PAL attendue ; il nécessite les outils indiqués dans les notes. Ne pas lancer ce script sur une extraction déjà préparée sans lire ses vérifications.
+5. Fournir localement une bibliothèque Sony signée `libc.prx` adaptée au firmware, à l'emplacement `PPSA99611/sce_module/libc.prx` du paquet personnel. Elle n'est pas distribuée ici.
+
+La compilation actuelle génère des données et du code à partir du disque. Ses fichiers `generated/`, ses blocs `.bin` et l'exécutable résultant doivent rester locaux. La procédure complète de compilation à partir de zéro n'est pas encore validée ; ces instructions ne promettent pas un paquet immédiatement constructible.
+
+## Contenu d'un paquet construit localement
 
 | Élément | Rôle |
 |---|---|
@@ -141,4 +153,5 @@ et l'envoyer avec une description (moment du bug, circuit, photo de l'écran si 
   Ne pas toucher à `DATA` ni à `UserData`.
 - **Désinstaller** : supprimer le dossier `/data/PPSA99611` par FTP. Cela efface aussi les sauvegardes.
   Le retrait de l'icône dépend de ShadowMountPlus et n'a pas été testé avec cette version.
+
 

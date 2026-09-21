@@ -4,7 +4,19 @@ Native port of **Mario Kart Wii (PAL version, RMCP01)** for a jailbroken PS5. Th
 
 **Game data is not provided.** You must use your own copy of Mario Kart Wii PAL.
 
-## Folder contents
+## What you must supply locally
+
+This is a source-only distribution. Previous binaries were withdrawn because they embedded data extracted from the game. The installation steps below apply only to a locally built package; downloading the GitHub source archive does not provide a ready-to-play game.
+
+1. Use your own **PAL RMCP01** Mario Kart Wii disc. Follow the [official Dolphin ripping guide](https://dolphin-emu.org/docs/guides/ripping-games/), which documents CleanRip, to create an image from your disc. No game download links are provided.
+2. Transfer that image to your PC and add it to Dolphin's game list. Follow step 1 below to extract its data partition.
+3. Keep the image, `DATA/`, `main.dol` and `StaticR.rel` local. Do not attach them to GitHub issues or pull requests.
+4. Read the [build notes](BUILDING.md). The `ps5/Prepare-Game.ps1 -DiscImage <path>` script validates the expected PAL revision hashes and requires the documented tools. Review its checks before using it with an existing extraction.
+5. Supply your own signed, firmware-compatible Sony `libc.prx` at `PPSA99611/sce_module/libc.prx` in your personal package. This library is not distributed here.
+
+The current build generates game code and data from the disc. Keep `generated/`, its binary blobs and the resulting executable local. The complete clean-build process is not yet validated; these notes do not promise an immediately reproducible player package.
+
+## Contents of a locally built package
 
 | Item | Purpose |
 |---|---|
@@ -152,4 +164,5 @@ To report a crash or bug, retrieve this folder through FTP and send it together 
   Do not modify `DATA` or `UserData`.
 - **Uninstall:** delete the `/data/PPSA99611` folder through FTP. This will also delete all save data.  
   Removal of the home-screen icon depends on ShadowMountPlus and has not been tested with this version.
+
 
