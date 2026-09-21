@@ -19,7 +19,7 @@ Portage natif de **Mario Kart Wii PAL (RMCP01)** sur PlayStation 5, basé sur [W
 | Fonction | État |
 | --- | --- |
 | Rendu GPU natif | Moteur AGC |
-| Fréquence d'affichage | 60 images/s rapportées sur PS5 / PS5 Pro après la mise en pause de kstuff |
+| Fréquence d'affichage | 60 images/s rapportées sur PS5 Pro après la mise en pause de kstuff |
 | Manette | DualSense avec correspondance GameCube |
 | Sauvegardes | NAND locale dans `UserData/NAND` |
 | Région | PAL, RMCP01 |
@@ -31,6 +31,7 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 ### Limites connues
 
 - La mini-carte en 2D pendant les courses ne s'affiche pas correctement.
+- La PS5 standard n'a pas été testée selon la documentation fournie.
 - La présence d'un paquet par firmware ne confirme pas son fonctionnement : voir les [notes sur les firmwares](docs/FIRMWARE.md).
 
 ## Prérequis
@@ -66,20 +67,25 @@ kstuff_delay=PPSA99611:5
 
 Le guide explique les réglages de bascule automatique et la correction du délai si ShadowMountPlus l'augmente après un plantage.
 
-## Commandes
+## Commandes (DualSense)
 
-| DualSense | GameCube |
+Commandes par défaut : le portage utilise le mode manette GameCube de Mario Kart Wii. Aucun mouvement de Wiimote n'est nécessaire.
+
+| Bouton DualSense | Action dans Mario Kart Wii |
 | --- | --- |
-| Joystick gauche | Stick |
-| Croix directionnelle | Croix directionnelle |
-| Croix | A |
-| Rond | B |
-| Carré | X |
-| Triangle | Y |
-| R1 | Z |
-| L2 / R2 | L / R |
-| Options | Start |
+| Joystick gauche | Diriger le véhicule ; naviguer dans les menus |
+| Croix (✕) | Accélérer ; valider dans les menus |
+| Rond (○) ou R2 | Freiner / reculer ; saut et dérapage en mode manuel. Rond permet aussi de revenir en arrière dans les menus |
+| Triangle (△) ou L2 | Utiliser un objet ; maintenir pour garder derrière soi les objets qui le permettent |
+| Carré (□) ou R1 | Regarder derrière soi |
+| Croix directionnelle, au décollage d'un saut | Effectuer une figure |
+| Croix directionnelle haut, sur une moto | Lever la roue avant (wheeling) |
+| Croix directionnelle bas, sur une moto | Terminer le wheeling |
+| Options | Ouvrir le menu pause |
 
+Pour un dérapage manuel, maintenir Croix pour accélérer, appuyer sur R2 ou Rond et orienter le joystick gauche. Relâcher le bouton de dérapage après les étincelles pour déclencher le mini-turbo. Le mode automatique ne propose pas de mini-turbo manuel.
+
+Correspondances vérifiées dans le code d'entrée du portage et confrontées au [manuel Nintendo de Mario Kart Wii, commandes GameCube et techniques de conduite](https://www.mariomayhem.com/downloads/mario_instruction_booklets/Mario_Kart_Wii-WII.pdf). Cette vérification documentaire n'est pas un nouvel essai sur console. Une configuration personnelle des boutons peut modifier ces commandes.
 ## Organisation de l'application
 
 ```text
@@ -112,6 +118,7 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
+
 
 
 

@@ -19,7 +19,7 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 | Feature | Status |
 | --- | --- |
 | Native GPU rendering | AGC backend |
-| Frame rate | 60 FPS reported on PS5 / PS5 Pro after kstuff is paused |
+| Frame rate | 60 FPS reported on PS5 Pro after kstuff is paused |
 | Controller | DualSense, GameCube button mapping |
 | Saves | Local NAND in `UserData/NAND` |
 | Game region | PAL, RMCP01 |
@@ -31,6 +31,7 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 ### Known limitations
 
 - The 2D mini-map during races does not display correctly.
+- Standard PS5 hardware has not been tested according to the release documentation.
 - Firmware-specific packages are not a compatibility test. See [firmware notes](docs/FIRMWARE.md).
 
 ## Requirements
@@ -66,20 +67,25 @@ kstuff_delay=PPSA99611:5
 
 The full guide explains auto-toggle settings and recovery if ShadowMountPlus increases that delay after a crash.
 
-## Controls
+## Controls (DualSense)
 
-| DualSense | GameCube |
+Default controls: the port uses Mario Kart Wii's GameCube controller mode. No Wii Remote motion gestures are needed.
+
+| DualSense button | Action in Mario Kart Wii |
 | --- | --- |
-| Left stick | Control stick |
-| D-pad | D-pad |
-| Cross | A |
-| Circle | B |
-| Square | X |
-| Triangle | Y |
-| R1 | Z |
-| L2 / R2 | L / R |
-| Options | Start |
+| Left stick | Steer; navigate menus |
+| Cross (✕) | Accelerate; confirm menu selections |
+| Circle (○) or R2 | Brake / reverse; hop and drift in manual mode. Circle also goes back in menus |
+| Triangle (△) or L2 | Use an item; hold to trail items that support it |
+| Square (□) or R1 | Look behind |
+| D-pad, as you leave a jump | Perform a trick |
+| D-pad up, while riding a bike | Start a wheelie |
+| D-pad down, while riding a bike | End a wheelie |
+| Options | Open the pause menu |
 
+For manual drifting, hold Cross to accelerate, press R2 or Circle and steer with the left stick. Release the drift button once sparks have charged to trigger a mini-turbo. Automatic drift does not provide manual mini-turbos.
+
+Mappings were checked against the port's input code and the [Nintendo Mario Kart Wii manual, GameCube controls and driving techniques](https://www.mariomayhem.com/downloads/mario_instruction_booklets/Mario_Kart_Wii-WII.pdf). This is a source/documentation check, not a new console test. Custom button bindings may change these controls.
 ## Application layout
 
 ```text
@@ -112,6 +118,7 @@ Include console model, firmware, package variant, track and steps to reproduce. 
 ## Repository status
 
 The PS5 source code and pinned dependency modifications are included. See [build notes](docs/BUILDING.md), [release notes](docs/RELEASE-NOTES.md) and [license notices](THIRD-PARTY-NOTICES.md). A clean build has not been verified.
+
 
 
 
