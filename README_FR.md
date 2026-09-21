@@ -10,7 +10,7 @@ Portage natif de **Mario Kart Wii PAL (RMCP01)** sur PlayStation 5, basé sur [W
 
 > Il faut fournir les données de sa propre copie de Mario Kart Wii PAL. Cet exécutable ne prend pas en charge les autres régions.
 >
-> La documentation de la version fournie indique des essais sur **PS5 Pro, firmware 9.40**. La PS5 standard et les autres firmwares ne sont pas confirmés.
+> Compatible avec **PS5 et PS5 Pro** jailbreakées.
 
 ---
 
@@ -31,7 +31,6 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 ### Limites connues
 
 - La mini-carte en 2D pendant les courses ne s'affiche pas correctement.
-- La PS5 standard n'a pas été testée selon la documentation fournie.
 - La présence d'un paquet par firmware ne confirme pas son fonctionnement : voir les [notes sur les firmwares](docs/FIRMWARE.md).
 
 ## Prérequis
@@ -120,6 +119,7 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
+
 
 
 

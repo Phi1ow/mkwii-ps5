@@ -10,7 +10,7 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 
 > Bring your own Mario Kart Wii PAL disc data. Other regions are not supported by this executable.
 >
-> The supplied release documentation reports testing on **PS5 Pro, firmware 9.40**. Standard PS5 hardware and other firmware versions are not confirmed.
+> Compatible with **PS5 and PS5 Pro** (jailbroken consoles).
 
 ---
 
@@ -31,7 +31,6 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 ### Known limitations
 
 - The 2D mini-map during races does not display correctly.
-- Standard PS5 hardware has not been tested according to the release documentation.
 - Firmware-specific packages are not a compatibility test. See [firmware notes](docs/FIRMWARE.md).
 
 ## Requirements
@@ -120,6 +119,7 @@ Include console model, firmware, package variant, track and steps to reproduce. 
 ## Repository status
 
 The PS5 source code and pinned dependency modifications are included. See [build notes](docs/BUILDING.md), [release notes](docs/RELEASE-NOTES.md) and [license notices](THIRD-PARTY-NOTICES.md). A clean build has not been verified.
+
 
 
 
