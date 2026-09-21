@@ -10,7 +10,7 @@ Portage natif de **Mario Kart Wii PAL (RMCP01)** sur PlayStation 5, basé sur [W
 
 > Il faut fournir les données de sa propre copie de Mario Kart Wii PAL. Cet exécutable ne prend pas en charge les autres régions.
 >
-> La documentation de la version fournie indique des essais sur **PS5 Pro, firmware 9.40**. La PS5 standard et les autres firmwares ne sont pas confirmés.
+> La documentation de la version fournie indique des essais sur PS5, PS5 Pro. 
 
 ---
 
