@@ -42,6 +42,12 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 - Une extraction personnelle de Mario Kart Wii PAL contenant `DATA/sys/main.dol` et `DATA/files/rel/StaticR.rel`.
 - Environ 3 Go disponibles sur la console.
 
+## Téléchargement
+
+[Télécharger Kart PS5 et les variantes de firmware](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
+
+Cette distribution est en préversion : le paquet nettoyé n'a pas été retesté sur console. Ajouter sa propre bibliothèque signée **libc.prx**, adaptée au firmware, dans **PPSA99611/sce_module/libc.prx** avant de suivre le guide. Les données du jeu et les sauvegardes personnelles ne sont pas incluses. Les variantes contiennent uniquement l'exécutable et les métadonnées de remplacement.
+
 ## Installation
 
 Suivre le [guide complet en français](docs/INSTALL_FR.md) ou le [guide en anglais](docs/INSTALL_EN.md).
@@ -106,5 +112,6 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
+
 
 

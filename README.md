@@ -19,8 +19,8 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 | Feature | Status |
 | --- | --- |
 | Native GPU rendering | AGC backend |
-| Frame rate | 60 FPS reported on PS5 / PS5 Pro after kstuff is paused |
-| Controller | DualSense |
+| Frame rate | 60 FPS reported on PS5 Pro after kstuff is paused |
+| Controller | DualSense, GameCube button mapping |
 | Saves | Local NAND in `UserData/NAND` |
 | Game region | PAL, RMCP01 |
 | Title ID | `PPSA99611` |
@@ -41,6 +41,12 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 - ShadowMountPlus 1.6beta16; the tested 1.7alpha versions rejected the title information.
 - Your own Mario Kart Wii PAL extraction, with `DATA/sys/main.dol` and `DATA/files/rel/StaticR.rel`.
 - Approximately 3 GB of available console storage.
+
+## Download
+
+[Download Kart PS5 and firmware overlays](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
+
+This distribution is marked as a pre-release: the cleaned package has not been retested on console. Supply your own firmware-compatible signed **libc.prx** in **PPSA99611/sce_module/libc.prx** before following the installation guide. Game data and player saves are not included. Firmware overlays contain replacement executable and metadata files only.
 
 ## Installing
 
@@ -106,5 +112,6 @@ Include console model, firmware, package variant, track and steps to reproduce. 
 ## Repository status
 
 The PS5 source code and pinned dependency modifications are included. See [build notes](docs/BUILDING.md), [release notes](docs/RELEASE-NOTES.md) and [license notices](THIRD-PARTY-NOTICES.md). A clean build has not been verified.
+
 
 
