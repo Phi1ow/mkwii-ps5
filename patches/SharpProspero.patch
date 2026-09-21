@@ -1,0 +1,200 @@
+diff --git a/tools/SharpProspero.Link/CompatEmitter.cs b/tools/SharpProspero.Link/CompatEmitter.cs
+index 3d6a577..ed69ca2 100644
+--- a/tools/SharpProspero.Link/CompatEmitter.cs
++++ b/tools/SharpProspero.Link/CompatEmitter.cs
+@@ -3058,7 +3058,9 @@ public static class CompatEmitter
+ 
+         // The clock the runtime asks for is numbered differently here, and the one it asks for most is
+         // the one that differs; both routines that take a clock translate it.
+-        ClockGettime(),
++        // Weak: a native target may supply a faster steady clock with the same
++        // contract (the PS5 kernel clock costs ~22 us per call).
++        ClockGettime() with { Weak = true },
+         PthreadSigmask(),
+         Fcntl(),
+ 
+@@ -3068,16 +3070,18 @@ public static class CompatEmitter
+         AttrKeep("pthread_condattr_setclock"),
+         Zero("pthread_condattr_destroy"),
+         CondInit(),
+-        AttrStart("pthread_mutexattr_init", AttrStartingKind),
+-        AttrKeep("pthread_mutexattr_settype"),
+-        Zero("pthread_mutexattr_destroy"),
+-        MutexInit(),
++        // Native C++ targets may supply a different pthread attribute ABI.
++        // Keep Linux defaults when no explicit platform implementation exists.
++        AttrStart("pthread_mutexattr_init", AttrStartingKind) with { Weak = true },
++        AttrKeep("pthread_mutexattr_settype") with { Weak = true },
++        WeakZero("pthread_mutexattr_destroy"),
++        MutexInit() with { Weak = true },
+ 
+         // Mapped to a device entry, or refused where there is no counterpart.
+         SetErrno(),
+         ErrnoLocation(),
+-        StrError(),
+-        StrErrorR(),
++        StrError() with { Weak = true },
++        StrErrorR() with { Weak = true },
+         // Naming a thread. Two names reach the same work here, and only one of them answers the way
+         // the runtime was built to read: the one this forwards to hands back nought or a plain error
+         // number, while the other wraps that number into a code of its own, so a caller testing for a
+@@ -3197,7 +3201,7 @@ public static class CompatEmitter
+         // variant below is what those checks reach and it forwards here. The call that does follow a
+         // link is published and answers the same question about the same name; the two differ only
+         // where a name is a link, and the difference is worth far less than the answer.
+-        Forward("lstat", "stat"),
++        Forward("lstat", "stat") with { Weak = true },
+         Refuse("pipe"),
+         Refuse("poll"),
+         Zero("setrlimit"),                          // no limit to change; succeed as a no-op
+@@ -3268,7 +3272,7 @@ public static class CompatEmitter
+         Zero("dlclose"),
+         Zero("dlerror"),
+         Zero("getenv"),
+-        RefuseNull("realpath"),
++        RefuseNull("realpath") with { Weak = true },
+     ];
+ 
+     /// <summary>The functions this object defines for a given target. Payload builds substitute the
+diff --git a/tools/SharpProspero.Link/DynamicWriter.cs b/tools/SharpProspero.Link/DynamicWriter.cs
+index ab8d89d..d31ce83 100644
+--- a/tools/SharpProspero.Link/DynamicWriter.cs
++++ b/tools/SharpProspero.Link/DynamicWriter.cs
+@@ -199,9 +199,11 @@ public static class DynamicWriter
+     /// The two are separate because a module publishing more than one library names each apart from
+     /// itself, which is how every module on the console is arranged.
+     /// </param>
++    /// <param name="functionMap">Optional retained-function address callback for a diagnostic sidecar.</param>
+     public static byte[] Write(LinkResolution resolution, string? entrySymbol, ModuleKind kind = ModuleKind.Executable,
+         IReadOnlyList<string>? exportSymbols = null, string? moduleFileName = null,
+-        string? moduleName = null, string? exportLibraryName = null)
++        string? moduleName = null, string? exportLibraryName = null,
++        Action<string, string, ulong, ulong>? functionMap = null)
+     {
+         ArgumentNullException.ThrowIfNull(resolution);
+         if (resolution.Unresolved.Count > 0)
+@@ -426,7 +428,7 @@ public static class DynamicWriter
+                 for (int i = 0; i < obj.Sections.Count; i++)
+                 {
+                     ElfSection sec = obj.Sections[i];
+-                    if (!sec.IsAlloc || !sec.IsTls) continue;
++                    if (!sec.IsAlloc || !sec.IsTls || resolution.DroppedSections.Contains((obj, i))) continue;
+                     if ((pass == 0) == sec.IsNoBits) continue;          // initialized sections in pass 0
+                     ulong o = Align(tlsMemLen, sec.AddrAlign);
+                     tlsOffset[(obj, i)] = o; tlsMemLen = o + sec.Size;
+@@ -503,7 +505,8 @@ public static class DynamicWriter
+         foreach ((ElfObject obj, int i) in ehFrames)
+         {
+             var probe = new List<EhFrame.Entry>();
+-            if (!EhFrame.TryParse(obj.Sections[i].Data, 0, probe)) { ehFrameOk = false; break; }
++            var frames = EhFrame.PruneDiscarded(obj, i, resolution.DroppedSections);
++            if (!EhFrame.TryParse(frames.Data, 0, probe)) { ehFrameOk = false; break; }
+             ehFrameCount += probe.Count;
+         }
+         int ehFrameHdrSize = ehFrameOk && ehFrameCount > 0 ? 12 + ehFrameCount * 8 : 0;
+@@ -852,7 +855,9 @@ public static class DynamicWriter
+             // so its address cannot be settled from the section's flags the way every other one is.
+             if (guard == (o, i)) return dataAddr + sectionOffsetInGroup[(o, i)];
+             ulong bas = s.IsExecutable ? textAddr : s.IsWritable ? dataAddr : roAddr;
+-            return bas + sectionOffsetInGroup[(o, i)];
++            if (!sectionOffsetInGroup.TryGetValue((o, i), out ulong offset))
++                throw new ElfLinkException($"{o.Origin}: reference to unplaced section {i} '{s.Name}' (dropped={resolution.DroppedSections.Contains((o, i))}).");
++            return bas + offset;
+         }
+         RefuseThreadLocalsInALibrary(resolution, kind, tlsAlignedMem);
+         var dynRelocs = new List<DynReloc>(gotDataOrder.Count + abs64Count);
+@@ -951,6 +956,16 @@ public static class DynamicWriter
+         }
+ 
+         // Fill each export's address now that the layout is fixed.
++        // Optional sidecar diagnostics; no symbols or debug bytes are added to
++        // the executable. Report only retained executable function definitions.
++        if (functionMap is not null)
++            foreach (ElfObject obj in resolution.Included)
++                foreach (ElfSymbol sym in obj.Symbols)
++                    if (!sym.IsUndefined && sym.Type == SymType.Func && sym.Name.Length > 0 &&
++                        sym.SectionIndex < obj.Sections.Count && obj.Sections[sym.SectionIndex].IsAlloc &&
++                        !resolution.DroppedSections.Contains((obj, sym.SectionIndex)))
++                        functionMap(obj.Origin, sym.Name,
++                            SymbolValue(resolution, importByName, SectionAddr, obj, sym, linkerDefined), sym.Size);
+         foreach ((int index, ElfObject obj, ElfSymbol sym) in exportDynIndex)
+             BinaryPrimitives.WriteUInt64LittleEndian(dynsymBytes.AsSpan(index * 24 + 8),
+                 SymbolValue(resolution, importByName, SectionAddr, obj, sym, linkerDefined));
+@@ -1097,6 +1112,9 @@ public static class DynamicWriter
+                 // rest of its own group, which went with it.
+                 if (resolution.DroppedSections.Contains((obj, idx))) continue;
+                 byte[] bytes = sec.IsNoBits ? new byte[sec.Size] : (byte[])sec.Data.Clone();
++                HashSet<ulong>? ignoredFrameRelocs = null;
++                if (sec.Name == ".eh_frame")
++                    (bytes, ignoredFrameRelocs) = EhFrame.PruneDiscarded(obj, idx, resolution.DroppedSections);
+                 ulong secAddr = sectionAddr(obj, idx);
+ 
+                 // A general- or local-dynamic thread-local sequence is a lea followed by a call
+@@ -1109,6 +1127,7 @@ public static class DynamicWriter
+                 {
+                     if (r.SymbolIndex >= (uint)obj.Symbols.Count) continue;
+                     ElfSymbol sym = obj.Symbols[(int)r.SymbolIndex];
++                    if (ignoredFrameRelocs?.Contains(r.Offset) == true) continue;
+                     ulong place = secAddr + r.Offset;
+                     int at = (int)r.Offset;
+ 
+@@ -1477,7 +1496,7 @@ public static class DynamicWriter
+         LinkResolution resolution, Dictionary<(ElfObject, int), ulong> tlsOffset, ElfObject obj, ElfSymbol sym, out ulong result)
+     {
+         result = 0;
+-        if (!sym.IsUndefined)
++        if (!sym.IsUndefined && !resolution.DroppedSections.Contains((obj, sym.SectionIndex)))
+         {
+             if (!tlsOffset.TryGetValue((obj, sym.SectionIndex), out ulong o)) return false;
+             result = o + sym.Value;
+diff --git a/tools/SharpProspero.Link/EhFrame.cs b/tools/SharpProspero.Link/EhFrame.cs
+index 83e0e06..21672c7 100644
+--- a/tools/SharpProspero.Link/EhFrame.cs
++++ b/tools/SharpProspero.Link/EhFrame.cs
+@@ -16,6 +16,46 @@ namespace SharpProspero.Link;
+ /// <summary>Reads the exception frames and builds their search index.</summary>
+ internal static class EhFrame
+ {
++    // A non-grouped frame section can still describe discarded COMDAT code.
++    // Its FDE must go with that code: remapping it onto the kept function can
++    // associate that function with a different stack layout or LSDA. Keep byte
++    // offsets stable by replacing the discarded FDE with an unreferenced valid
++    // CIE padded with DW_CFA_nop, and skip all relocations inside that record.
++    internal static (byte[] Data, HashSet<ulong> IgnoredRelocations) PruneDiscarded(
++        ElfObject obj, int section, IReadOnlySet<(ElfObject Object, int Section)> dropped)
++    {
++        byte[] data = (byte[])obj.Sections[section].Data.Clone();
++        var ignored = new HashSet<ulong>();
++        if (!obj.Relocations.TryGetValue(section, out var relocs)) return (data, ignored);
++        for (int pos = 0; pos + 4 <= data.Length;)
++        {
++            uint length = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(pos));
++            if (length == 0) break;
++            if (length < 4 || length > data.Length - pos - 4)
++                throw new ElfLinkException($"{obj.Origin}: malformed .eh_frame record at {pos}.");
++            int end = pos + 4 + (int)length;
++            uint id = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(pos + 4));
++            bool discard = false;
++            if (id != 0)
++                foreach (var r in relocs)
++                    if (r.Offset == (ulong)(pos + 8) && r.SymbolIndex < obj.Symbols.Count &&
++                        dropped.Contains((obj, obj.Symbols[(int)r.SymbolIndex].SectionIndex)))
++                        discard = true;
++            if (discard)
++            {
++                if (length < 13)
++                    throw new ElfLinkException($"{obj.Origin}: discarded FDE is too short to neutralize.");
++                data.AsSpan(pos + 4, (int)length).Clear();
++                new byte[] { 1, (byte)'z', (byte)'R', 0, 1, 0x78, 16, 1, 0x1b }
++                    .CopyTo(data, pos + 8);
++                foreach (var r in relocs)
++                    if (r.Offset >= (ulong)pos && r.Offset < (ulong)end) ignored.Add(r.Offset);
++            }
++            pos = end;
++        }
++        return (data, ignored);
++    }
++
+     // Pointer-encoding nibbles.
+     private const byte FormatMask = 0x0F, ApplicationMask = 0x70;
+     private const byte AbsPtr = 0x00, UData4 = 0x03, UData8 = 0x04, SData4 = 0x0B, SData8 = 0x0C;

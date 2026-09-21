@@ -1,0 +1,18 @@
+--- a/runtime/src/hle/gx/gx_dl.cpp
++++ b/runtime/src/hle/gx/gx_dl.cpp
+@@ -1497,6 +1497,15 @@
+         InvalidateAppliedAuroraState();
+         ParseDisplayList(list, nbytes);
+         InvalidateAppliedAuroraState();
++    } catch (const std::exception& e) {
++        // A draw the backend rejects inside a display list used to vanish here
++        // without a trace (e.g. whole models missing). Report the first ones.
++        static uint32_t s_rejectedDisplayLists = 0;
++        if (s_rejectedDisplayLists < 32 || (s_rejectedDisplayLists & 1023) == 0) {
++            RT_LOGF(RT_TAG_GX, "GXCallDisplayList 0x%08X (%u bytes) dropped after an exception (n=%u): %s\n",
++                    listAddr, nbytes, s_rejectedDisplayLists + 1, e.what());
++        }
++        ++s_rejectedDisplayLists;
+     } catch (...) {}
+ }
+ 

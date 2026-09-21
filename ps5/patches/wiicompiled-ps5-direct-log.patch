@@ -1,0 +1,27 @@
+diff --git a/runtime/src/main.cpp b/runtime/src/main.cpp
+index 51b034a..a700d7f 100644
+--- a/runtime/src/main.cpp
++++ b/runtime/src/main.cpp
+@@ -406,6 +406,22 @@ void InitializeProcessTranscript(int argc, char** argv) {
+         return;
+     }
+ 
++#if defined(MKW_PLATFORM_PS5)
++    // Native dup is denied and pipes are unavailable. Redirect the actual
++    // streams directly to distinct per-run files so diagnostics survive an
++    // early failure without depending on a background transcript thread.
++    const std::string stdoutPath = (GetRunLogDirectory() / "console.log").string();
++    const std::string stderrPath = (GetRunLogDirectory() / "stderr.log").string();
++    if (std::freopen(stdoutPath.c_str(), "w", stdout)) {
++        std::setvbuf(stdout, nullptr, _IONBF, 0);
++        std::fprintf(stdout, "[runtime] PS5 direct transcript argc=%d\n", argc);
++    }
++    if (std::freopen(stderrPath.c_str(), "w", stderr)) {
++        std::setvbuf(stderr, nullptr, _IONBF, 0);
++    }
++    return;
++#endif
++
+     const std::filesystem::path path = GetRunLogDirectory() / "console.log";
+     state.file.open(path, std::ios::out | std::ios::trunc | std::ios::binary);
+     if (!state.file) {

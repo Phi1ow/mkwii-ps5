@@ -1,0 +1,14 @@
+# DIAGNOSTIC pad autopilot script for PPSA99611 performance runs.
+# Copy to /data/PPSA99611/UserData/autopilot.txt (the game reads
+# /app0/UserData/autopilot.txt at input start-up). Delete it to disable.
+#
+# Times are seconds from the first input poll. Mashing Cross with every
+# default selection walks Mario Kart Wii from the strap and title screens
+# through licence, main menu, Grand Prix, character, vehicle, cup and course
+# into a race; in the race Cross is accelerate on the GameCube mapping.
+
+# Strap / health screen, title, licence and menus: one press every 1.5 s.
+repeat 20 200 1500 cross 150
+
+# Race: keep accelerating so the camera and the field move like normal play.
+200 cross 400000

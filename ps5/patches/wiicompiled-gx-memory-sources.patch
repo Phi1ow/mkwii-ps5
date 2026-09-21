@@ -1,0 +1,58 @@
+diff --git a/runtime/src/hle/gx/gx_dl.cpp b/runtime/src/hle/gx/gx_dl.cpp
+index 4a984a7..2a4aaca 100644
+--- a/runtime/src/hle/gx/gx_dl.cpp
++++ b/runtime/src/hle/gx/gx_dl.cpp
+@@ -2,6 +2,9 @@
+ #include "gx_stream_common.h"
+ #include "gx_cp_decode.h"
+ #include "isa/big_endian.h"
++#ifdef MKW_PLATFORM_PS5
++#include "gx_host_memory_ps5.h"
++#endif
+ 
+ #include <cstdlib>
+ #include <unordered_map>
+@@ -1207,7 +1210,11 @@ static bool ApplyAuroraArraysForDisplayList(const std::array<uint32_t, GX_VA_MAX
+                                             const std::array<bool, GX_VA_MAX_ATTR>& sawIdx,
+                                             GXVtxFmt vtxfmt,
+                                             bool vtxfmtMixed) {
++#ifdef MKW_PLATFORM_PS5
++    static std::array<std::array<mkw::agc::GxHostBytes, 2>, GX_VA_MAX_ATTR> s_packedArrays;
++#else
+     static std::array<std::array<std::vector<uint8_t>, 2>, GX_VA_MAX_ATTR> s_packedArrays;
++#endif
+     static std::array<uint32_t, GX_VA_MAX_ATTR> s_packedArrayCursor{};
+     bool ok = true;
+     if (vtxfmt >= GX_MAX_VTXFMT) {
+@@ -1226,12 +1233,18 @@ static bool ApplyAuroraArraysForDisplayList(const std::array<uint32_t, GX_VA_MAX
+             ok = false;
+             continue;
+         }
+-        const uint32_t span = (count > 0) ? (static_cast<uint32_t>((count - 1u) * arr.stride) + elemSize) : 0u;
++        const uint64_t span64 = (count > 0) ? (uint64_t(count - 1u) * arr.stride + elemSize) : 0u;
++        if (span64 > UINT32_MAX) { ok = false; continue; }
++        const uint32_t span = static_cast<uint32_t>(span64);
+         const bool needsPack = arr.stride > 0xffu;
+         if (!Memory::Contains(arr.base, span)) {
+             ok = false;
+             continue;
+         }
++#ifdef MKW_PLATFORM_PS5
++        // The packed path reads raw RAM before the renderer can resolve it.
++        if (needsPack) MemoryInline::ResolveDeferredReads(arr.base, span);
++#endif
+         const uint8_t* hostPtr = static_cast<const uint8_t*>(GuestToHostPtr(arr.base, span));
+         if (!hostPtr) {
+             ok = false;
+@@ -1244,7 +1257,11 @@ static bool ApplyAuroraArraysForDisplayList(const std::array<uint32_t, GX_VA_MAX
+             ApplyAuroraArrayIfChanged(gxAttr, hostPtr, span, static_cast<uint8_t>(arr.stride));
+             continue;
+         }
++#ifdef MKW_PLATFORM_PS5
++        auto& packed = s_packedArrays[attr][++s_packedArrayCursor[attr] & 1u].bytes();
++#else
+         auto& packed = s_packedArrays[attr][++s_packedArrayCursor[attr] & 1u];
++#endif
+         if (!PackIndexedAttrData(hostPtr, arr.stride, count, elemSize, packed)) {
+             ok = false;
+             continue;

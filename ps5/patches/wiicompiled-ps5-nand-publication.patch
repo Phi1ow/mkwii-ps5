@@ -1,0 +1,65 @@
+diff --git a/runtime/include/nand_settings.h b/runtime/include/nand_settings.h
+index 055f4c2..1c3a1dc 100644
+--- a/runtime/include/nand_settings.h
++++ b/runtime/include/nand_settings.h
+@@ -11,6 +11,9 @@
+ #include <optional>
+ #include <string>
+ #include <utility>
++#if defined(MKW_PLATFORM_PS5)
++#include <thread>
++#endif
+ 
+ #ifdef _WIN32
+ #include <windows.h>
+@@ -149,6 +152,31 @@ inline bool Ensure(const std::filesystem::path& root, std::string& error,
+                    std::time_t now = std::time(nullptr)) {
+     const auto path = FilePath(root);
+     std::error_code ec;
++#if defined(MKW_PLATFORM_PS5)
++    // Applications have rename but no link/linkat export. Serialize every PS5
++    // reader/publisher through a directory claim before checking the target.
++    // Rename then publishes the complete file atomically for cooperating game
++    // instances. External writers must not modify this NAND while it is open.
++    // Never break a stale claim automatically: it may belong to a live writer.
++    std::filesystem::create_directories(path.parent_path(), ec);
++    if (ec) { error = "Cannot create NAND settings directory: " + ec.message(); return false; }
++    struct PublishLock {
++        std::filesystem::path path;
++        bool owned = false;
++        ~PublishLock() { if (owned) { std::error_code ignored; std::filesystem::remove(path, ignored); } }
++    } lock{path.parent_path() / ".setting-publish-lock"};
++    for (unsigned attempt = 0; attempt < 100; ++attempt) {
++        ec.clear();
++        if (std::filesystem::create_directory(lock.path, ec)) { lock.owned = true; break; }
++        if (ec && ec != std::errc::file_exists) break;
++        std::this_thread::sleep_for(std::chrono::milliseconds(10));
++    }
++    if (!lock.owned) {
++        error = "NAND setting.txt publication is locked or unavailable; existing data was left untouched";
++        return false;
++    }
++    ec.clear();
++#endif
+     const auto status = std::filesystem::symlink_status(path, ec);
+     if (ec && ec != std::errc::no_such_file_or_directory) {
+         error = "Cannot inspect NAND setting.txt: " + ec.message();
+@@ -198,7 +226,17 @@ inline bool Ensure(const std::filesystem::path& root, std::string& error,
+     }
+     bool published = false;
+     if (written) {
+-#ifdef _WIN32
++#if defined(MKW_PLATFORM_PS5)
++        // The claim covers both the existence check above and publication.
++        // Retain an unexpected externally-created target instead of replacing it.
++        ec.clear();
++        const auto latest = std::filesystem::symlink_status(path, ec);
++        if ((!ec || ec == std::errc::no_such_file_or_directory) && !std::filesystem::exists(latest)) {
++            ec.clear();
++            std::filesystem::rename(temporary, path, ec);
++            published = !ec;
++        }
++#elif defined(_WIN32)
+         published = MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_WRITE_THROUGH) != 0;
+ #else
+         published = ::link(temporary.c_str(), path.c_str()) == 0;

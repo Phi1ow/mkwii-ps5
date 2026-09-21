@@ -1,0 +1,45 @@
+--- a/runtime/include/memory_access.h
++++ b/runtime/include/memory_access.h
+@@ -242,6 +242,34 @@
+     (void)needsRead;
+     const uint32_t guestStart = base + static_cast<uint32_t>(minOffset);
+     if (length == 0 || length > kPageSize || guestStart > UINT32_MAX - (length - 1)) return nullptr;
++#if defined(MKW_PLATFORM_PS5)
++    // A host page can cover several independently special Wii pages, so the
++    // guest view cannot trap per Wii page. Resolve through the same checked
++    // tables the scalar Memory::* fast paths use, once for the whole range:
++    // the translator bounds a range's lifetime by calls that could register
++    // deferred reads or executable guards, exactly as the desktop flat path
++    // relies on for its page protections. Any special page returns null and
++    // keeps every access of the range on the per-access checked path.
++    {
++        const uint32_t page = guestStart >> kPageShift;
++        if (((guestStart + (length - 1)) >> kPageShift) != page) return nullptr;
++        if (g_deferredReadCoveredPages[page]) return nullptr;
++        // Each bias is non-zero only for a fully mapped 1 MiB page; the writable
++        // one is also zero whenever the page holds any executable-write guard.
++        const uintptr_t readable = g_fullReadablePageBias[page];
++        const uintptr_t writable = g_fullWritablePageBias[page];
++        uintptr_t bias = 0;
++        if (needsWrite) {
++            if (!writable || FlatWriteNeedsPolicy(guestStart)) return nullptr;
++            if (needsRead && readable != writable) return nullptr;
++            bias = writable;
++        } else {
++            if (!readable) return nullptr;
++            bias = readable;
++        }
++        return reinterpret_cast<uint8_t*>((bias - 1u) + guestStart);
++    }
++#else
+     if (GuestFlat::RequiresCheckedAccess()) {
+         // A host page can cover multiple independently-special Wii pages.
+         // Returning null keeps resolved accesses on the checked Memory::*
+@@ -249,6 +277,7 @@
+         (void)needsWrite;
+         return nullptr;
+     }
++#endif
+     if (needsWrite &&
+         (FlatWriteNeedsPolicy(guestStart) || FlatWriteNeedsPolicy(guestStart + (length - 1))))
+         [[unlikely]] return nullptr;

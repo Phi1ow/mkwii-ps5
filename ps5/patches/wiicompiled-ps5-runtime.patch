@@ -1,0 +1,138 @@
+diff --git a/aurora-main/include/aurora/aurora.h b/aurora-main/include/aurora/aurora.h
+index c3f70d2..e5b489c 100644
+--- a/aurora-main/include/aurora/aurora.h
++++ b/aurora-main/include/aurora/aurora.h
+@@ -22,6 +22,7 @@ typedef enum {
+   BACKEND_OPENGLES,
+   BACKEND_WEBGPU,
+   BACKEND_NULL,
++  BACKEND_AGC,
+ } AuroraBackend;
+ 
+ typedef enum {
+diff --git a/runtime/include/runtime_config.h b/runtime/include/runtime_config.h
+index c8cdf80..e03eb4c 100644
+--- a/runtime/include/runtime_config.h
++++ b/runtime/include/runtime_config.h
+@@ -165,7 +165,9 @@ inline bool IsSupportedResolutionMultiplier(float value) {
+ // Must stay in step with the backend table in main.cpp, which is what actually
+ // maps these to AuroraBackend.
+ inline bool IsSupportedGraphicsApi(std::string_view value) {
+-#if defined(__APPLE__)
++#if defined(MKW_PLATFORM_PS5)
++    static constexpr std::array<std::string_view, 2> values{"auto", "agc"};
++#elif defined(__APPLE__)
+     static constexpr std::array<std::string_view, 2> values{"auto", "metal"};
+ // only vulkan for linux
+ #elif defined(__linux__)
+@@ -203,7 +205,7 @@ inline std::optional<std::filesystem::path> ExecutableDirectory() {
+         }
+         buffer.resize(buffer.size() * 2);
+     }
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) || defined(MKW_PLATFORM_PS5)
+     return RuntimePlatform::ExecutableDirectory();
+ #else
+     // /proc/self/exe is a Linux-specific magic symlink to the running executable; readlink()
+@@ -262,7 +264,7 @@ inline std::filesystem::path ApplicationDataDirectory() {
+         CoTaskMemFree(rawPath);
+         return directory;
+     }
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) || defined(MKW_PLATFORM_PS5)
+     return RuntimePlatform::ApplicationDataDirectory(kApplicationDirectoryName);
+ #else
+     // XDG Base Directory spec equivalent of FOLDERID_LocalAppData: $XDG_DATA_HOME if set and
+diff --git a/runtime/src/hle/audio/audio.cpp b/runtime/src/hle/audio/audio.cpp
+index 1be5008..96a7e80 100644
+--- a/runtime/src/hle/audio/audio.cpp
++++ b/runtime/src/hle/audio/audio.cpp
+@@ -509,7 +509,7 @@ int64_t ConsumeAudioPollDeltaMicros()
+     // kMaxBlocksPerTick per pass. Never return early on a zero delta: two scheduler passes
+     // can land in the same microsecond and the backlog still needs servicing.
+     constexpr int64_t kMaxPollDeltaMicros = 100'000;
+-    return std::min(elapsed, kMaxPollDeltaMicros);
++    return std::min<int64_t>(elapsed, kMaxPollDeltaMicros);
+ }
+ 
+ } // namespace
+diff --git a/runtime/src/hle/net/network_internal.h b/runtime/src/hle/net/network_internal.h
+index 97c0608..9023851 100644
+--- a/runtime/src/hle/net/network_internal.h
++++ b/runtime/src/hle/net/network_internal.h
+@@ -50,6 +50,7 @@
+ #endif
+ #else
+ #include <arpa/inet.h>
++#include <netinet/in.h>
+ #include <cerrno>
+ #include <fcntl.h>
+ #include <netdb.h>
+diff --git a/runtime/src/main.cpp b/runtime/src/main.cpp
+index d06a0ce..51b034a 100644
+--- a/runtime/src/main.cpp
++++ b/runtime/src/main.cpp
+@@ -1099,6 +1099,11 @@ void InstallSehLogger() {
+         SetUnhandledExceptionFilter(UnhandledSehFilter);
+     }
+ }
++#elif defined(MKW_PLATFORM_PS5)
++// PS5 GuestFlat uses checked 4-KiB guest accesses. Native host faults remain
++// fatal and are captured by the console's crash reporter; FreeBSD/glibc
++// siginfo/ucontext layouts are not a verified PS5 signal ABI.
++void InstallPosixMemoryFaultHandler() {}
+ #else
+ // POSIX counterpart to SehLogger above. Unlike Windows' AddVectoredExceptionHandler, which lets
+ // GuestFlat and this module each install their own handler and defensively re-check each other,
+@@ -1381,7 +1386,11 @@ int RuntimeMain(int argc, char** argv) {
+             const char* configName;
+             AuroraBackend backend;
+         };
+-#if defined(__APPLE__)
++#if defined(MKW_PLATFORM_PS5)
++        static constexpr std::array<GraphicsBackendEntry, 2> kGraphicsBackends{{
++            {"auto", BACKEND_AGC}, {"agc", BACKEND_AGC},
++        }};
++#elif defined(__APPLE__)
+         static constexpr std::array<GraphicsBackendEntry, 2> kGraphicsBackends{{
+             {"auto", BACKEND_AUTO}, {"metal", BACKEND_METAL},
+         }};
+diff --git a/runtime/src/platform/host_platform.cpp b/runtime/src/platform/host_platform.cpp
+index c0caa95..c49f1c6 100644
+--- a/runtime/src/platform/host_platform.cpp
++++ b/runtime/src/platform/host_platform.cpp
+@@ -20,7 +20,9 @@
+ namespace RuntimePlatform {
+ 
+ std::optional<std::filesystem::path> ExecutableDirectory() noexcept {
+-#if defined(_WIN32)
++#if defined(MKW_PLATFORM_PS5)
++    return std::filesystem::path("/app0");
++#elif defined(_WIN32)
+     std::wstring buffer(MAX_PATH, L'\0');
+     for (;;) {
+         const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+@@ -52,7 +54,9 @@ std::optional<std::filesystem::path> ExecutableDirectory() noexcept {
+ }
+ 
+ std::filesystem::path ApplicationDataDirectory(std::string_view applicationName) {
+-#if defined(_WIN32)
++#if defined(MKW_PLATFORM_PS5)
++    return std::filesystem::path("/data") / applicationName;
++#elif defined(_WIN32)
+     PWSTR rawPath = nullptr;
+     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &rawPath)) && rawPath) {
+         const std::filesystem::path directory = std::filesystem::path(rawPath) / applicationName;
+diff --git a/runtime/third_party/cryptopp/cpu.cpp b/runtime/third_party/cryptopp/cpu.cpp
+index bc2a35d..08a9f44 100644
+--- a/runtime/third_party/cryptopp/cpu.cpp
++++ b/runtime/third_party/cryptopp/cpu.cpp
+@@ -60,7 +60,7 @@ unsigned long int getauxval(unsigned long int) { return 0; }
+ 
+ // FreeBSD headers are giving us trouble...
+ // https://github.com/weidai11/cryptopp/pull/1029
+-#if defined(__FreeBSD__)
++#if defined(__FreeBSD__) && !defined(MKW_PLATFORM_PS5)
+ # include <sys/auxv.h>
+ # include <sys/elf_common.h>
+ #endif

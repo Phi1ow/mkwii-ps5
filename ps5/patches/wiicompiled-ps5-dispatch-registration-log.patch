@@ -1,0 +1,38 @@
+diff --git a/runtime/src/abi_bridge.cpp b/runtime/src/abi_bridge.cpp
+index 4ef3b2b..dc0fedb 100644
+--- a/runtime/src/abi_bridge.cpp
++++ b/runtime/src/abi_bridge.cpp
+@@ -272,6 +272,9 @@ void RegisterStaticIndirectDispatchTable(const StaticIndirectDispatchTable* tabl
+     // Mirror into the header-visible atomic under the same lock, so the
+     // inlined miss path and this owning static can never disagree.
+     g_publishedStaticIndirectDispatchTable.store(table, std::memory_order_release);
++    RT_LOG(RT_TAG_RUNTIME) << "Registered generated indirect dispatch profile '"
++            << (table->profileName ? table->profileName : "<unnamed>") << "' ("
++            << table->entryCount << " entries)" << std::endl;
+ }
+ 
+ void RegisterBulkTranslatedFunctions(const BulkTranslatedFunctionRecord* records, size_t count) {
+@@ -342,6 +345,23 @@ void TranslatedFunctionRegistry::Finalize() {
+         RT_LOG(RT_TAG_RUNTIME) << overrides
+                   << " registration(s) took over an address by priority" << std::endl;
+     }
++    {
++        std::lock_guard<std::mutex> lock(RegistryMutex());
++        size_t base = 0, mod = 0, native = 0;
++        for (const auto& entry : Registry()) {
++            switch (entry.kind) {
++            case FunctionKind::BaseTranslated: ++base; break;
++            case FunctionKind::ModTranslated: ++mod; break;
++            case FunctionKind::Native: ++native; break;
++            default: break;
++            }
++        }
++        RT_LOG(RT_TAG_RUNTIME) << "Translated function registry: " << base << " base, "
++                  << mod << " mod, " << native << " native ("
++                  << (GeneratedIndirectDispatchTable() && GeneratedIndirectDispatchTable()->profileName
++                          ? GeneratedIndirectDispatchTable()->profileName : "none")
++                  << " dispatch profile)" << std::endl;
++    }
+     std::string validationError;
+     {
+         std::lock_guard<std::mutex> lock(RegistryMutex());

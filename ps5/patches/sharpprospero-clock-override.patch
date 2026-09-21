@@ -1,0 +1,14 @@
+diff --git a/tools/SharpProspero.Link/CompatEmitter.cs b/tools/SharpProspero.Link/CompatEmitter.cs
+--- a/tools/SharpProspero.Link/CompatEmitter.cs
++++ b/tools/SharpProspero.Link/CompatEmitter.cs
+@@ -3058,7 +3058,9 @@ public static class CompatEmitter
+ 
+         // The clock the runtime asks for is numbered differently here, and the one it asks for most is
+         // the one that differs; both routines that take a clock translate it.
+-        ClockGettime(),
++        // Weak: a native target may supply a faster steady clock with the same
++        // contract (the PS5 kernel clock costs ~22 us per call).
++        ClockGettime() with { Weak = true },
+         PthreadSigmask(),
+         Fcntl(),
+ 

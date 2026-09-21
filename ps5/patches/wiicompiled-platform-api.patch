@@ -1,0 +1,38 @@
+diff --git a/runtime/include/host_context.h b/runtime/include/host_context.h
+index 4d7355f..2deae9e 100644
+--- a/runtime/include/host_context.h
++++ b/runtime/include/host_context.h
+@@ -1,7 +1,5 @@
+ #pragma once
+ 
+-#include <cstddef>
+-
+ // HostContext is the deliberately small boundary between the guest scheduler
+ // and the host's cooperative-context facility. Windows uses native Fibers and
+ // Linux uses libco; macOS AArch64 uses the local assembly backend because it
+@@ -12,11 +10,14 @@ namespace HostContext {
+ 
+ using Handle = void*;
+ using Entry = void (*)(void*);
++// Keep this small platform boundary usable before a host C++ sysroot exists.
++// decltype(sizeof(...)) is the same underlying type as std::size_t.
++using StackSize = decltype(sizeof(0));
+ 
+ bool InitializeScheduler(Handle* scheduler);
+ void ShutdownScheduler(Handle scheduler);
+ 
+-Handle Create(std::size_t stackSize, Entry entry, void* argument);
++Handle Create(StackSize stackSize, Entry entry, void* argument);
+ void Destroy(Handle context);
+ bool IsCurrent(Handle context);
+ void Switch(Handle target);
+diff --git a/runtime/src/host_context.cpp b/runtime/src/host_context.cpp
+index e23c1c0..07cceb0 100644
+--- a/runtime/src/host_context.cpp
++++ b/runtime/src/host_context.cpp
+@@ -1,4 +1,5 @@
+ #include "host_context.h"
++#include <cstddef>
+ 
+ #if defined(_WIN32)
+ #ifndef NOMINMAX

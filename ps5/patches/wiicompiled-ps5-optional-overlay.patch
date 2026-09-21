@@ -1,0 +1,46 @@
+diff --git a/runtime/src/settings_overlay.cpp b/runtime/src/settings_overlay.cpp
+index 9354800..f623d06 100644
+--- a/runtime/src/settings_overlay.cpp
++++ b/runtime/src/settings_overlay.cpp
+@@ -1354,6 +1354,9 @@ void HandleEvents(const AuroraEvent* events) noexcept {
+         if (ev->type != AURORA_SDL_EVENT) {
+             continue;
+         }
++#if defined(MKW_PLATFORM_PS5)
++        if (!ImGui::GetCurrentContext()) continue;
++#endif
+         controller_mapping_wizard::HandleSdlEvent(ev->sdl);
+         if (g_rebind.active && (IsToggleKey(ev->sdl, SDL_SCANCODE_BACKSPACE) ||
+                                 IsToggleKey(ev->sdl, SDL_SCANCODE_DELETE))) {
+@@ -1404,6 +1407,21 @@ void Draw() noexcept {
+     WiiRemoteInput::Poll();
+     ApplyConfiguredMappings();
+     PersistDisplayModeIfChanged();
++#if defined(MKW_PLATFORM_PS5)
++    // The AGC bootstrap currently has no ImGui renderer. Keep device polling
++    // and persisted mappings, but do not enter a UI frame or capture controls
++    // for an invisible settings/wizard window.
++    if (!ImGui::GetCurrentContext()) {
++        static bool reported = false;
++        if (!reported) {
++            std::cerr << "[ps5-overlay] Host overlay unavailable; configured game input remains active\n";
++            reported = true;
++        }
++        PADBlockInput(false);
++        InputBindings::SetInputBlocked(false);
++        return;
++    }
++#endif
+     UpdateCursorAutoHide();
+     if (!StartupScreenVisible()) {
+         DrawShaderCompilationStatus();
+@@ -1420,6 +1438,9 @@ void Draw() noexcept {
+ }
+ 
+ bool StartupScreenVisible() noexcept {
++#if defined(MKW_PLATFORM_PS5)
++    if (!ImGui::GetCurrentContext()) return false;
++#endif
+     return !g_strapInputAccepted.load(std::memory_order_acquire) ||
+            g_presentedFrame < g_startupDismissFrame.load(std::memory_order_relaxed);
+ }

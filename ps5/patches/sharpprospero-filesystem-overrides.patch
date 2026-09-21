@@ -1,0 +1,22 @@
+diff --git a/tools/SharpProspero.Link/CompatEmitter.cs b/tools/SharpProspero.Link/CompatEmitter.cs
+index 3d6a577..f0dfb16 100644
+--- a/tools/SharpProspero.Link/CompatEmitter.cs
++++ b/tools/SharpProspero.Link/CompatEmitter.cs
+@@ -3197,7 +3199,7 @@ public static class CompatEmitter
+         // variant below is what those checks reach and it forwards here. The call that does follow a
+         // link is published and answers the same question about the same name; the two differ only
+         // where a name is a link, and the difference is worth far less than the answer.
+-        Forward("lstat", "stat"),
++        Forward("lstat", "stat") with { Weak = true },
+         Refuse("pipe"),
+         Refuse("poll"),
+         Zero("setrlimit"),                          // no limit to change; succeed as a no-op
+@@ -3268,7 +3270,7 @@ public static class CompatEmitter
+         Zero("dlclose"),
+         Zero("dlerror"),
+         Zero("getenv"),
+-        RefuseNull("realpath"),
++        RefuseNull("realpath") with { Weak = true },
+     ];
+ 
+     /// <summary>The functions this object defines for a given target. Payload builds substitute the

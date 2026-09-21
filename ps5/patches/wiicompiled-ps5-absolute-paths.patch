@@ -1,0 +1,70 @@
+diff --git a/aurora-main/lib/dolphin/card.cpp b/aurora-main/lib/dolphin/card.cpp
+index 81c450b..61d4da9 100644
+--- a/aurora-main/lib/dolphin/card.cpp
++++ b/aurora-main/lib/dolphin/card.cpp
+@@ -177,7 +177,11 @@ void CARDInit(const char* game, const char* maker) {
+   if (aurora::g_config.userPath != nullptr)
+     cardWorkingDir = fs_path_from_string(aurora::g_config.userPath);
+   else
++#if defined(MKW_PLATFORM_PS5)
++    cardWorkingDir = std::filesystem::path("/data/wiicompiled");
++#else
+     cardWorkingDir = std::filesystem::current_path();
++#endif
+ 
+   bool loadedCard = false;
+ 
+diff --git a/runtime/include/nand_path.h b/runtime/include/nand_path.h
+index eb0fda8..65fc644 100644
+--- a/runtime/include/nand_path.h
++++ b/runtime/include/nand_path.h
+@@ -66,7 +66,12 @@ inline std::optional<std::filesystem::path> BootstrapPayloadPath() {
+     }
+ 
+     // This makes developer-tree launches work without changing their release layout.
+-    for (auto base = std::filesystem::current_path(); !base.empty();) {
++#if defined(MKW_PLATFORM_PS5)
++    auto searchBase = std::filesystem::path("/app0");
++#else
++    auto searchBase = std::filesystem::current_path();
++#endif
++    for (auto base = searchBase; !base.empty();) {
+         const auto candidate = base / "runtime" / "assets" / "wii";
+         if (ExistingDirectory(candidate / "shared2" / "wc24")) {
+             return candidate;
+diff --git a/runtime/src/hle/audio/ax_mix.cpp b/runtime/src/hle/audio/ax_mix.cpp
+index ba225e6..3a6217b 100644
+--- a/runtime/src/hle/audio/ax_mix.cpp
++++ b/runtime/src/hle/audio/ax_mix.cpp
+@@ -39,7 +39,14 @@ std::filesystem::path FindDspCoefficientRom() {
+         }
+     }
+ 
+-    for (auto base = std::filesystem::current_path(); !base.empty();) {
++#if defined(MKW_PLATFORM_PS5)
++    // Native applications do not expose a usable process cwd. The package is
++    // the explicit starting point for the same asset search.
++    auto searchBase = std::filesystem::path("/app0");
++#else
++    auto searchBase = std::filesystem::current_path();
++#endif
++    for (auto base = searchBase; !base.empty();) {
+         const auto sourceTreeAsset = base / "runtime" / "assets" / "dsp" / "dsp_coef.bin";
+         if (std::filesystem::is_regular_file(sourceTreeAsset)) {
+             return sourceTreeAsset;
+diff --git a/runtime/src/recomp_mod_loader.cpp b/runtime/src/recomp_mod_loader.cpp
+index 104ff0d..8a84d66 100644
+--- a/runtime/src/recomp_mod_loader.cpp
++++ b/runtime/src/recomp_mod_loader.cpp
+@@ -278,7 +278,11 @@ void RegisterDvdOverlayRoot(std::string root) {
+     // are registered by mod code shipped beside the executable, so they resolve
+     // against the executable directory instead.
+     const std::filesystem::path base =
++#if defined(MKW_PLATFORM_PS5)
++        RuntimeConfigFile::ExecutableDirectory().value_or(std::filesystem::path("/app0"));
++#else
+         RuntimeConfigFile::ExecutableDirectory().value_or(std::filesystem::current_path());
++#endif
+     std::filesystem::path resolved = RuntimeConfigFile::ResolveRelativeTo(base, root);
+ 
+     std::lock_guard<std::mutex> lock(ModMutex());

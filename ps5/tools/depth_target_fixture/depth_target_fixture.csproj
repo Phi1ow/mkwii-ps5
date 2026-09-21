@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../agc_fixture/agc_fixture.csproj" />
+    <Compile Include="../../../SharpProspero/src/SharpProspero/Graphics/Agc/CxRenderTarget.cs" Link="CxRenderTarget.cs" />
+    <Compile Include="../../../SharpProspero/src/SharpProspero/Graphics/Agc/CxDepthRenderTarget.cs" Link="CxDepthRenderTarget.cs" />
+  </ItemGroup>
+</Project>

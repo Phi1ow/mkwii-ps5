@@ -1,0 +1,210 @@
+diff --git a/runtime/include/abi_bridge.h b/runtime/include/abi_bridge.h
+index 8775d68..904d8a9 100644
+--- a/runtime/include/abi_bridge.h
++++ b/runtime/include/abi_bridge.h
+@@ -37,6 +37,25 @@ struct MkwNativeSiteScope {
+ #define MKW_NATIVE_SITE(address)
+ #endif
+ 
++#if defined(MKW_PLATFORM_PS5) && defined(MKW_PS5_FPROF)
++// DIAGNOSTIC, profiling build variant only (ps5/runtime/function_profiler_ps5.cpp,
++// Compile-Game.ps1 -FunctionProfile): a native service called from translated
++// code opens its own profiler frame, so its time is not charged to the caller.
++// Site 0 opens nothing (a translated target on a shared dispatch path).
++extern "C" void mkw_fprof_native_enter(uint32_t site);
++extern "C" void mkw_fprof_native_exit(uint32_t site);
++struct MkwFprofNativeScope {
++    uint32_t site;
++    explicit MkwFprofNativeScope(uint32_t address) noexcept : site(address) {
++        if (site) mkw_fprof_native_enter(site);
++    }
++    ~MkwFprofNativeScope() { if (site) mkw_fprof_native_exit(site); }
++};
++#define MKW_FPROF_NATIVE(address) MkwFprofNativeScope mkwFprofNative(address)
++#else
++#define MKW_FPROF_NATIVE(address)
++#endif
++
+ inline void InvokeIndirectCpu(uint32_t target, CpuContext* ctx);
+ 
+ // Some game-facing runtime options alter arguments at well-defined ABI
+@@ -447,6 +466,7 @@ MKW_PPC_FORCE_INLINE bool TryDispatchResolvedCpuTarget(const TranslatedFunctionI
+     MkwNativeSiteScope nativeSite(info->kind == FunctionKind::Native
+         ? info->address : g_mkwNativeSite.load(std::memory_order_relaxed));
+ #endif
++    MKW_FPROF_NATIVE(info->kind == FunctionKind::Native ? info->address : 0u);
+     PpcNonvolatileFprGuard fprGuard(cpu, NonvolatileFprGuardMaskFor(info));
+     PpcNonvolatileGprGuard gprGuard(cpu, ShouldPreserveNonvolatileGprsForRawCpuCall(info));
+     if (TryGetCpuContext() != cpu) {
+@@ -463,6 +483,9 @@ inline bool TryDispatchRawCpuTarget(const RawDispatchRecord* record, CpuContext*
+         return false;
+     }
+     RecompMod::ScopedTranslatedExecutionAddress translatedExecution(record->address);
++    // Only native records preserve the nonvolatile GPRs (see
++    // ShouldPreserveNonvolatileGprsForRawCpuCall).
++    MKW_FPROF_NATIVE(record->preserveNonvolatileGprs ? record->address : 0u);
+     PpcNonvolatileGprGuard gprGuard(cpu, record->preserveNonvolatileGprs);
+     PpcNonvolatileFprGuard fprGuard(cpu, record->nonvolatileFprWriteMask);
+     if (TryGetCpuContext() != cpu) {
+@@ -571,6 +594,7 @@ inline void InvokeDirectCpu(CpuContext* ctx) {
+     if constexpr (KnownNativeCpuCall<Target>::kAvailable) {
+         const auto invokeKnownNative = [&]() {
+             MKW_NATIVE_SITE(Target);
++            MKW_FPROF_NATIVE(Target);
+             PpcNonvolatileGprGuard gprGuard(cpu);
+             if (TryGetCpuContext() != cpu) {
+                 CpuContextScope scope(cpu);
+@@ -590,6 +614,7 @@ inline void InvokeDirectCpu(CpuContext* ctx) {
+ 
+     if constexpr (KnownTypedNativeCpuCall<Target>::kAvailable) {
+         MKW_NATIVE_SITE(Target);
++        MKW_FPROF_NATIVE(Target);
+         PpcNonvolatileGprGuard gprGuard(cpu);
+         if (TryGetCpuContext() != cpu) {
+             CpuContextScope scope(cpu);
+diff --git a/runtime/src/memory.cpp b/runtime/src/memory.cpp
+index 53b0766..76c8ad1 100644
+--- a/runtime/src/memory.cpp
++++ b/runtime/src/memory.cpp
+@@ -35,6 +35,45 @@ uintptr_t MemoryInline::g_fullWritablePageBias[MemoryInline::kPageCount]{};
+ const MemoryInline::SparseWritablePageTable*
+     MemoryInline::g_sparseWritablePageTables[MemoryInline::kPageCount]{};
+ uint8_t MemoryInline::g_deferredReadCoveredPages[MemoryInline::kPageCount]{};
++#if defined(MKW_PLATFORM_PS5) && defined(MKW_PS5_FPROF)
++// DIAGNOSTIC, profiling build variant only (ps5/runtime/function_profiler_ps5.cpp):
++// count every cold scalar access by kind and by whether its 1 MiB page is
++// covered by a pending deferred read, time one call in 16, and histogram the
++// coarse pages. Plain counters: the guest thread is the only hot caller.
++#include <x86intrin.h>
++struct MkwSlowAccessCounters {
++    uint64_t calls[13][2];
++    uint64_t sampledTicks[13];
++    uint64_t sampled[13];
++    uint32_t pages[MemoryInline::kPageCount];
++};
++static MkwSlowAccessCounters g_mkwSlowAccess{};
++extern "C" MkwSlowAccessCounters* mkw_fprof_memory_counters() { return &g_mkwSlowAccess; }
++namespace {
++struct MkwSlowAccessScope {
++    unsigned kind;
++    uint64_t start = 0;
++    MkwSlowAccessScope(unsigned k, uint32_t addr) noexcept : kind(k) {
++        const unsigned covered = MemoryInline::g_deferredReadCoveredPages[addr >> MemoryInline::kPageShift] ? 1u : 0u;
++        const uint64_t n = ++g_mkwSlowAccess.calls[k][covered];
++        ++g_mkwSlowAccess.pages[addr >> MemoryInline::kPageShift];
++        if ((n & 15u) == 0) start = __rdtsc();
++    }
++    ~MkwSlowAccessScope() {
++        if (!start) return;
++        g_mkwSlowAccess.sampledTicks[kind] += __rdtsc() - start;
++        ++g_mkwSlowAccess.sampled[kind];
++    }
++};
++}  // namespace
++// Kinds: reads 8/16/32/64/f32/f64 = 0..5, RAM writes 8/16/32/64/f32/f64 = 6..11,
++// gather-pipe writes = 12.
++#define MKW_SLOW_ACCESS(kind, addr) MkwSlowAccessScope mkwSlowAccess((kind), (addr))
++#define MKW_SLOW_WRITE(kind, addr) MkwSlowAccessScope mkwSlowAccess(IsGpuFifoAddress(addr) ? 12u : (kind), (addr))
++#else
++#define MKW_SLOW_ACCESS(kind, addr)
++#define MKW_SLOW_WRITE(kind, addr)
++#endif
+ template <typename T>
+ T MemoryInline::ReadResolvedFallback(uint32_t addr) {
+     if constexpr (sizeof(T) == 1) return Memory::Read8(addr);
+@@ -710,6 +749,7 @@ namespace {
+ } // namespace
+ 
+ uint8_t MemoryInline::Read8Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(0u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(uint8_t));
+     }
+@@ -718,6 +758,7 @@ uint8_t MemoryInline::Read8Slow(uint32_t addr) {
+ }
+ 
+ uint16_t MemoryInline::Read16Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(1u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(uint16_t));
+     }
+@@ -726,6 +767,7 @@ uint16_t MemoryInline::Read16Slow(uint32_t addr) {
+ }
+ 
+ uint32_t MemoryInline::Read32Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(2u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(uint32_t));
+     }
+@@ -735,6 +777,7 @@ uint32_t MemoryInline::Read32Slow(uint32_t addr) {
+ }
+ 
+ uint64_t MemoryInline::Read64Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(3u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(uint64_t));
+     }
+@@ -743,6 +786,7 @@ uint64_t MemoryInline::Read64Slow(uint32_t addr) {
+ }
+ 
+ float MemoryInline::ReadFloat32Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(4u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(float));
+     }
+@@ -754,6 +798,7 @@ float MemoryInline::ReadFloat32Slow(uint32_t addr) {
+ }
+ 
+ double MemoryInline::ReadFloat64Slow(uint32_t addr) {
++    MKW_SLOW_ACCESS(5u, addr);
+     if (IsMmioAddress(addr)) {
+         ThrowMmioReadBlocked(addr, sizeof(double));
+     }
+@@ -765,6 +810,7 @@ double MemoryInline::ReadFloat64Slow(uint32_t addr) {
+ }
+ 
+ void MemoryInline::Write8Slow(uint32_t addr, uint8_t val) {
++    MKW_SLOW_WRITE(6u, addr);
+     if (IsGpuFifoAddress(addr)) {
+         GX_HLE_FIFO_Write8(val);
+         return;
+@@ -776,6 +822,7 @@ void MemoryInline::Write8Slow(uint32_t addr, uint8_t val) {
+ }
+ 
+ void MemoryInline::Write16Slow(uint32_t addr, uint16_t val) {
++    MKW_SLOW_WRITE(7u, addr);
+     if (IsGpuFifoAddress(addr)) {
+         GX_HLE_FIFO_Write16(val);
+         return;
+@@ -787,6 +834,7 @@ void MemoryInline::Write16Slow(uint32_t addr, uint16_t val) {
+ }
+ 
+ void MemoryInline::Write32Slow(uint32_t addr, uint32_t val) {
++    MKW_SLOW_WRITE(8u, addr);
+     if (IsGpuFifoAddress(addr)) {
+         GX_HLE_FIFO_Write32(val);
+         return;
+@@ -798,6 +846,7 @@ void MemoryInline::Write32Slow(uint32_t addr, uint32_t val) {
+ }
+ 
+ void MemoryInline::Write64Slow(uint32_t addr, uint64_t val) {
++    MKW_SLOW_WRITE(9u, addr);
+     if (IsGpuFifoAddress(addr)) {
+         // The gather pipe is a byte-stream FIFO; a 64-bit store is two big-endian
+         // 32-bit pushes, high word first. Without this arm the write fell through
+@@ -814,6 +863,7 @@ void MemoryInline::Write64Slow(uint32_t addr, uint64_t val) {
+ }
+ 
+ void MemoryInline::WriteFloat32Slow(uint32_t addr, double val) {
++    MKW_SLOW_WRITE(10u, addr);
+     // stfs stores the IEEE-754 bit pattern of the single-precision value, never a
+     // truncated integer.
+     const uint32_t bits = ConvertPpcDoubleToSingleBits(val);
+@@ -829,6 +879,7 @@ void MemoryInline::WriteFloat32Slow(uint32_t addr, double val) {
+ }
+ 
+ void MemoryInline::WriteFloat64Slow(uint32_t addr, double val) {
++    MKW_SLOW_WRITE(11u, addr);
+     // stfd stores the full 64-bit FPR bit pattern - load-bearing for the
+     // fctiwz->stfd->lwz idiom, where the integer result lives in the low word.
+     uint64_t bits;

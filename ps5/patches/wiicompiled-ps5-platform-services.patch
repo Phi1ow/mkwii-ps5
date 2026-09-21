@@ -1,0 +1,56 @@
+diff --git a/runtime/src/hle/net/network_socket.cpp b/runtime/src/hle/net/network_socket.cpp
+index 95c6634..58d45ba 100644
+--- a/runtime/src/hle/net/network_socket.cpp
++++ b/runtime/src/hle/net/network_socket.cpp
+@@ -102,7 +102,9 @@ static int MapSockOptName(uint32_t optname) {
+ 
+ static in_addr ResolveDefaultInterfaceIp() {
+     in_addr fallback{};
+-    fallback.s_addr = inet_addr("10.0.1.30");
++    // These fixed addresses already have network byte order after htonl;
++    // no dependency on the legacy inet_addr parser is needed.
++    fallback.s_addr = htonl(0x0a00011eU);
+     if (!EnsureSocketRuntime()) {
+         return fallback;
+     }
+@@ -114,7 +116,7 @@ static in_addr ResolveDefaultInterfaceIp() {
+ 
+     sockaddr_in remote{};
+     remote.sin_family = AF_INET;
+-    remote.sin_addr.s_addr = inet_addr("8.8.8.8");
++    remote.sin_addr.s_addr = htonl(0x08080808U);
+     remote.sin_port = htons(53);
+     connect(s, reinterpret_cast<const sockaddr*>(&remote), sizeof(remote));
+ 
+diff --git a/runtime/third_party/cryptopp/hrtimer.cpp b/runtime/third_party/cryptopp/hrtimer.cpp
+index bf3facf..9c9b12e 100644
+--- a/runtime/third_party/cryptopp/hrtimer.cpp
++++ b/runtime/third_party/cryptopp/hrtimer.cpp
+@@ -120,7 +120,15 @@ TimerWord Timer::TicksPerSecond()
+ 
+ TimerWord ThreadUserTimer::GetCurrentTimerValue()
+ {
+-#if defined(CRYPTOPP_WIN32_AVAILABLE) && defined(THREAD_TIMER_AVAILABLE)
++#if defined(MKW_PLATFORM_PS5)
++	// Native clock 14 measures this thread's CPU time, excluding sleep and
++	// other threads (PPSA99599). It includes kernel time, as clock() does on
++	// some existing backends; it is not a user-only accounting interface.
++	timespec now = {};
++	if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) != 0)
++		throw Exception(Exception::OTHER_ERROR, "ThreadUserTimer: PS5 thread CPU clock failed");
++	return (TimerWord)now.tv_sec * 1000000000 + now.tv_nsec;
++#elif defined(CRYPTOPP_WIN32_AVAILABLE) && defined(THREAD_TIMER_AVAILABLE)
+ 	static bool getCurrentThreadImplemented = true;
+ 	if (getCurrentThreadImplemented)
+ 	{
+@@ -158,7 +166,9 @@ GetCurrentThreadNotImplemented:
+ 
+ TimerWord ThreadUserTimer::TicksPerSecond()
+ {
+-#if defined(CRYPTOPP_WIN32_AVAILABLE) && defined(THREAD_TIMER_AVAILABLE)
++#if defined(MKW_PLATFORM_PS5)
++	return 1000000000;
++#elif defined(CRYPTOPP_WIN32_AVAILABLE) && defined(THREAD_TIMER_AVAILABLE)
+ 	return 10*1000*1000;
+ #elif defined(CRYPTOPP_WIN32_AVAILABLE) && !defined(THREAD_TIMER_AVAILABLE)
+ 	static const TimerWord ticksPerSecond = PerformanceCounterFrequency();

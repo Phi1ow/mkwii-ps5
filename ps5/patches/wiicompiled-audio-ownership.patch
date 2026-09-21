@@ -1,0 +1,50 @@
+diff --git a/runtime/include/audio_backend.h b/runtime/include/audio_backend.h
+index ae05827..20a84e9 100644
+--- a/runtime/include/audio_backend.h
++++ b/runtime/include/audio_backend.h
+@@ -41,6 +41,7 @@ private:
+     uint32_t m_sampleRate = 0;
+     uint32_t m_channels = 0;
+     bool m_initialized = false;
++    bool m_audioSubsystemReady = false;
+     float m_masterVolume = 1.0f;
+     bool m_muted = false;
+     bool m_reportedDroppedBlock = false;
+diff --git a/runtime/src/audio_backend.cpp b/runtime/src/audio_backend.cpp
+index 7ceda4c..f341cb8 100644
+--- a/runtime/src/audio_backend.cpp
++++ b/runtime/src/audio_backend.cpp
+@@ -45,10 +45,19 @@ bool AudioBackend::EnsureInitializedLocked(uint32_t sampleRate, uint32_t channel
+         SDL_DestroyAudioStream(m_stream);
+         m_stream = nullptr;
+     }
++    m_initialized = false;
++    m_sampleRate = 0;
++    m_channels = 0;
+ 
+-    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+-        RT_LOG(RT_TAG_AUDIO) << "SDL_InitSubSystem(SDL_INIT_AUDIO) failed: " << SDL_GetError() << std::endl;
+-        return false;
++    // Own one SDL subsystem reference independently of the stream. A failed
++    // open or a source-rate change must not accumulate references, and a
++    // failed replacement must not leave the previous format marked ready.
++    if (!m_audioSubsystemReady) {
++        if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
++            RT_LOG(RT_TAG_AUDIO) << "SDL_InitSubSystem(SDL_INIT_AUDIO) failed: " << SDL_GetError() << std::endl;
++            return false;
++        }
++        m_audioSubsystemReady = true;
+     }
+ 
+     SDL_AudioSpec spec{};
+@@ -93,8 +102,9 @@ void AudioBackend::Shutdown() {
+         SDL_DestroyAudioStream(m_stream);
+         m_stream = nullptr;
+     }
+-    if (m_initialized) {
++    if (m_audioSubsystemReady) {
+         SDL_QuitSubSystem(SDL_INIT_AUDIO);
++        m_audioSubsystemReady = false;
+     }
+     m_initialized = false;
+     m_sampleRate = 0;

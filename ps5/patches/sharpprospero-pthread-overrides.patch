@@ -1,0 +1,21 @@
+diff --git a/tools/SharpProspero.Link/CompatEmitter.cs b/tools/SharpProspero.Link/CompatEmitter.cs
+index 3d6a577..1e755a3 100644
+--- a/tools/SharpProspero.Link/CompatEmitter.cs
++++ b/tools/SharpProspero.Link/CompatEmitter.cs
+@@ -3068,10 +3068,12 @@ public static class CompatEmitter
+         AttrKeep("pthread_condattr_setclock"),
+         Zero("pthread_condattr_destroy"),
+         CondInit(),
+-        AttrStart("pthread_mutexattr_init", AttrStartingKind),
+-        AttrKeep("pthread_mutexattr_settype"),
+-        Zero("pthread_mutexattr_destroy"),
+-        MutexInit(),
++        // Native C++ targets may supply a different pthread attribute ABI.
++        // Keep Linux defaults when no explicit platform implementation exists.
++        AttrStart("pthread_mutexattr_init", AttrStartingKind) with { Weak = true },
++        AttrKeep("pthread_mutexattr_settype") with { Weak = true },
++        WeakZero("pthread_mutexattr_destroy"),
++        MutexInit() with { Weak = true },
+ 
+         // Mapped to a device entry, or refused where there is no counterpart.
+         SetErrno(),

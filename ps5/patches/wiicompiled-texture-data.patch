@@ -1,0 +1,856 @@
+diff --git a/aurora-main/lib/gfx/common.hpp b/aurora-main/lib/gfx/common.hpp
+--- a/aurora-main/lib/gfx/common.hpp
++++ b/aurora-main/lib/gfx/common.hpp
+@@ -1,6 +1,8 @@
+ #pragma once
+ 
+ #include "../internal.hpp"
++#include "../byte_buffer.hpp"
++#include "render_types.hpp"
+ #include "../webgpu/gpu.hpp"
+ 
+ #include <cstdint>
+@@ -15,213 +17,7 @@
+ #include <aurora/math.hpp>
+ #include <dolphin/gx/GXEnum.h>
+ #include <webgpu/webgpu_cpp.h>
+-#define XXH_STATIC_LINKING_ONLY
+-#include <xxhash.h>
+-
+-namespace aurora {
+-#if INTPTR_MAX == INT32_MAX
+-using HashType = XXH32_hash_t;
+-#else
+-using HashType = XXH64_hash_t;
+-#endif
+-static inline HashType xxh3_hash_s(const void* input, size_t len, HashType seed = 0) {
+-  return static_cast<HashType>(XXH3_64bits_withSeed(input, len, seed));
+-}
+-template <typename T>
+-static inline HashType xxh3_hash(const T& input, HashType seed = 0) {
+-  // Validate that the type has no padding bytes, which can easily cause
+-  // hash mismatches. This also disallows floats, but that's okay for us.
+-  static_assert(std::has_unique_object_representations_v<T>);
+-  return xxh3_hash_s(&input, sizeof(T), seed);
+-}
+-
+-// Folds two 64-bit hashes. Chaining them instead drops XXH3 onto its seeded long path past 240
+-// bytes, and that path regenerates a 192-byte secret on every call.
+-static inline HashType hash_combine(HashType lhs, HashType rhs) {
+-  uint64_t mixed = static_cast<uint64_t>(lhs) ^ (static_cast<uint64_t>(rhs) + 0x9E3779B97F4A7C15ull +
+-                                                 (static_cast<uint64_t>(lhs) << 6) + (static_cast<uint64_t>(lhs) >> 2));
+-  mixed ^= mixed >> 33;
+-  mixed *= 0xFF51AFD7ED558CCDull;
+-  mixed ^= mixed >> 29;
+-  return static_cast<HashType>(mixed);
+-}
+-
+-// Guest-RAM write tracking hooks (see aurora_set_guest_write_hooks). A digest samples the
+-// generation before reading the bytes, so a racing write costs an extra digest, never a skipped one.
+-inline constexpr uint64_t kGuestWriteUntracked = AURORA_GUEST_WRITE_UNTRACKED;
+-inline AuroraGuestWriteGenerationCallback g_guestWriteGenerationHook = nullptr;
+-inline AuroraGuestWriteNotifyCallback g_guestWriteNotifyHook = nullptr;
+-
+-inline uint64_t guest_write_generation(const void* data, size_t size) noexcept {
+-  if (g_guestWriteGenerationHook == nullptr || data == nullptr || size == 0) {
+-    return kGuestWriteUntracked;
+-  }
+-  return g_guestWriteGenerationHook(data, size);
+-}
+-
+-inline void notify_guest_write(const void* data, size_t size) noexcept {
+-  if (g_guestWriteNotifyHook == nullptr || data == nullptr || size == 0) {
+-    return;
+-  }
+-  g_guestWriteNotifyHook(data, size);
+-}
+-
+-// True when `stored` was taken over the same untouched bytes, so its digest still describes them.
+-// The untracked sentinel never matches: a source aurora cannot watch is always re-digested.
+-inline bool guest_write_generation_matches(uint64_t stored, uint64_t current) noexcept {
+-  return current != kGuestWriteUntracked && stored == current;
+-}
+-
+-class Hasher {
+-public:
+-  explicit Hasher(const XXH64_hash_t seed = 0) {
+-    XXH3_INITSTATE(&state);
+-    XXH3_64bits_reset_withSeed(&state, seed);
+-  }
+-
+-  void update(const void* data, const size_t size) { XXH3_64bits_update(&state, data, size); }
+-
+-  template <typename T>
+-  void update(const T& data) {
+-    static_assert(std::has_unique_object_representations_v<T>);
+-    update(&data, sizeof(T));
+-  }
+-
+-  [[nodiscard]] XXH64_hash_t digest() const { return XXH3_64bits_digest(&state); }
+-
+-private:
+-  XXH3_state_t state;
+-};
+-
+-class ByteBuffer {
+-public:
+-  ByteBuffer() noexcept = default;
+-  explicit ByteBuffer(size_t size) noexcept
+-  : m_data(static_cast<uint8_t*>(calloc(1, size))), m_length(size), m_capacity(size) {}
+-  explicit ByteBuffer(uint8_t* data, size_t size) noexcept : m_data(data), m_capacity(size), m_owned(false) {}
+-  ~ByteBuffer() noexcept {
+-    if (m_data != nullptr && m_owned) {
+-      free(m_data);
+-    }
+-  }
+-  ByteBuffer(ByteBuffer&& rhs) noexcept
+-  : m_data(rhs.m_data), m_length(rhs.m_length), m_capacity(rhs.m_capacity), m_owned(rhs.m_owned) {
+-    rhs.m_data = nullptr;
+-    rhs.m_length = 0;
+-    rhs.m_capacity = 0;
+-    rhs.m_owned = true;
+-  }
+-  ByteBuffer& operator=(ByteBuffer&& rhs) noexcept {
+-    if (m_data != nullptr && m_owned) {
+-      free(m_data);
+-    }
+-    m_data = rhs.m_data;
+-    m_length = rhs.m_length;
+-    m_capacity = rhs.m_capacity;
+-    m_owned = rhs.m_owned;
+-    rhs.m_data = nullptr;
+-    rhs.m_length = 0;
+-    rhs.m_capacity = 0;
+-    rhs.m_owned = true;
+-    return *this;
+-  }
+-  ByteBuffer(ByteBuffer const&) = delete;
+-  ByteBuffer& operator=(ByteBuffer const&) = delete;
+-  operator ArrayRef<uint8_t>() const noexcept { return {m_data, m_length}; }
+-
+-  [[nodiscard]] uint8_t* data() noexcept { return m_data; }
+-  [[nodiscard]] const uint8_t* data() const noexcept { return m_data; }
+-  [[nodiscard]] size_t size() const noexcept { return m_length; }
+-  [[nodiscard]] bool empty() const noexcept { return m_length == 0; }
+-
+-  void append(const void* data, size_t size) {
+-    resize(m_length + size, false);
+-    memcpy(m_data + m_length, data, size);
+-    m_length += size;
+-  }
+-
+-  template <typename T>
+-  void append(const T& obj) {
+-    append(&obj, sizeof(T));
+-  }
+-
+-  void append_zeroes(size_t size) {
+-    resize(m_length + size, true);
+-    m_length += size;
+-  }
+-
+-  // Extend the buffer without clearing the new bytes. Only for callers that overwrite the whole
+-  // region: the mapped staging buffers are megabytes of write-combine memory.
+-  void append_uninitialized(size_t size) {
+-    resize(m_length + size, false);
+-    m_length += size;
+-  }
+-
+-  void release() {
+-    if (m_data != nullptr && m_owned) {
+-      free(m_data);
+-    }
+-    m_data = nullptr;
+-    m_length = 0;
+-    m_capacity = 0;
+-    m_owned = true;
+-  }
+-
+-  void clear() {
+-    m_length = 0;
+-  }
+-
+-  void reserve_extra(size_t size) { resize(m_length + size, true); }
+-
+-  ByteBuffer clone() const {
+-    ByteBuffer clone{m_length};
+-    std::memcpy(clone.data(), m_data, m_length);
+-    return clone;
+-  }
+-
+-private:
+-  uint8_t* m_data = nullptr;
+-  size_t m_length = 0;
+-  size_t m_capacity = 0;
+-  bool m_owned = true;
+-
+-  // `size` is the total capacity needed. When `zeroed` is set, [m_length, size) has to read back as
+-  // zero on every branch; the early return used to leave the previous frame's bytes in the padding.
+-  void resize(size_t size, bool zeroed) {
+-    if (size == 0) {
+-      clear();
+-      return;
+-    }
+-    const size_t zeroBegin = m_length;
+-    if (m_data == nullptr) {
+-      if (zeroed) {
+-        m_data = static_cast<uint8_t*>(calloc(1, size));
+-      } else {
+-        m_data = static_cast<uint8_t*>(malloc(size));
+-      }
+-      m_owned = true;
+-      m_capacity = size;
+-      // calloc already cleared the whole allocation.
+-      return;
+-    }
+-    if (size > m_capacity) {
+-      if (!m_owned) {
+-        abort();
+-      }
+-      // Exponential expansion to avoid O(n^2) time complexity.
+-      size_t capacity = size;
+-      if (capacity < m_capacity * 2) {
+-        capacity = m_capacity * 2;
+-      }
+-      m_data = static_cast<uint8_t*>(realloc(m_data, capacity));
+-      m_capacity = capacity;
+-    }
+-    if (zeroed && size > zeroBegin) {
+-      memset(m_data + zeroBegin, 0, size - zeroBegin);
+-    }
+-  }
+-};
+-} // namespace aurora
++#include "../hash.hpp"
+ 
+ namespace aurora::gfx {
+ inline constexpr bool UseTextureBuffer = false;
+@@ -247,26 +43,6 @@
+ using PipelineRef = HashType;
+ using SamplerRef = HashType;
+ using ShaderRef = HashType;
+-struct Range {
+-  uint32_t offset = 0;
+-  uint32_t size = 0;
+-
+-  bool operator==(const Range& rhs) const { return memcmp(this, &rhs, sizeof(*this)) == 0; }
+-  bool operator!=(const Range& rhs) const { return !(*this == rhs); }
+-};
+-
+-struct ClipRect {
+-  int32_t x;
+-  int32_t y;
+-  int32_t width;
+-  int32_t height;
+-
+-  bool operator==(const ClipRect& rhs) const { return memcmp(this, &rhs, sizeof(*this)) == 0; }
+-  bool operator!=(const ClipRect& rhs) const { return !(*this == rhs); }
+-};
+-
+-using webgpu::Viewport;
+-
+ struct TextureRef;
+ using TextureHandle = std::shared_ptr<TextureRef>;
+ 
+diff --git a/aurora-main/lib/gfx/texture.hpp b/aurora-main/lib/gfx/texture.hpp
+--- a/aurora-main/lib/gfx/texture.hpp
++++ b/aurora-main/lib/gfx/texture.hpp
+@@ -4,17 +4,10 @@
+ #include <utility>
+ 
+ #include "common.hpp"
++#include "texture_data.hpp"
++#include "../dolphin/gx/texture_object.hpp"
+ 
+ namespace aurora::gfx {
+-constexpr uint32_t max_texture_mip_count(uint32_t width, uint32_t height) noexcept {
+-  uint32_t dimension = std::max(width, height);
+-  uint32_t count = 1;
+-  while (dimension > 1) {
+-    dimension >>= 1;
+-    ++count;
+-  }
+-  return count;
+-}
+ 
+ struct TextureUpload {
+   wgpu::TexelCopyBufferLayout layout;
+@@ -35,7 +28,6 @@
+ TextureFormatInfo format_info(wgpu::TextureFormat format) noexcept;
+ uint64_t calc_texture_size(wgpu::TextureFormat format, uint32_t width, uint32_t height, uint32_t mips) noexcept;
+ 
+-constexpr u32 InvalidTextureFormat = -1;
+ struct TextureRef {
+   wgpu::Texture texture;
+   wgpu::TextureView sampleTextureView;
+@@ -67,72 +59,6 @@
+ void write_texture(TextureRef& ref, ArrayRef<uint8_t> data) noexcept;
+ }; // namespace aurora::gfx
+ 
+-struct GXTexObj_ {
+-  u32 mode0 = 0;
+-  u32 mode1 = 0;
+-  u32 image0 = UINT32_MAX;
+-  u32 image3 = 0;
+-  const void* userData = nullptr;
+-  const void* data = nullptr;
+-  u32 mWidth = 0;
+-  u32 mHeight = 0;
+-  u32 mFormat = aurora::gfx::InvalidTextureFormat;
+-  GXTlut tlut = GX_TLUT0;
+-  u32 texObjId = 0;
+-  u32 texDataVersion = 0;
+-  u8 flags = 0;
+-
+-  static constexpr u32 get_bits(u32 reg, u32 size, u32 shift) noexcept { return (reg >> shift) & ((1u << size) - 1); }
+-
+-  u32 width() const noexcept { return mWidth != 0 ? mWidth : get_bits(image0, 10, 0) + 1 & 0x3FF; }
+-  u32 height() const noexcept { return mHeight != 0 ? mHeight : get_bits(image0, 10, 10) + 1 & 0x3FF; }
+-  u32 raw_format() const noexcept { return get_bits(image0, 4, 20); }
+-  u32 format() const noexcept { return mFormat != aurora::gfx::InvalidTextureFormat ? mFormat : raw_format(); }
+-  GXTexWrapMode wrap_s() const noexcept { return static_cast<GXTexWrapMode>(get_bits(mode0, 2, 0)); }
+-  GXTexWrapMode wrap_t() const noexcept { return static_cast<GXTexWrapMode>(get_bits(mode0, 2, 2)); }
+-  GXTexFilter min_filter() const noexcept {
+-    constexpr GXTexFilter kHwToGxFilter[8] = {
+-        GX_NEAR, GX_NEAR_MIP_NEAR, GX_NEAR_MIP_LIN, GX_NEAR, GX_LINEAR, GX_LIN_MIP_NEAR, GX_LIN_MIP_LIN, GX_NEAR,
+-    };
+-    return kHwToGxFilter[get_bits(mode0, 3, 5)];
+-  }
+-  GXTexFilter mag_filter() const noexcept { return get_bits(mode0, 1, 4) != 0 ? GX_LINEAR : GX_NEAR; }
+-  GXBool has_mips() const noexcept { return (flags & 1u) != 0 ? GX_TRUE : GX_FALSE; }
+-  u32 mip_count() const noexcept {
+-    if (!has_mips()) {
+-      return 1;
+-    }
+-    const u32 requested = std::max<u32>(static_cast<u32>(max_lod()) + 1, 1u);
+-    return std::min(requested, aurora::gfx::max_texture_mip_count(width(), height()));
+-  }
+-  GXBool do_edge_lod() const noexcept { return get_bits(mode0, 1, 8) == 0 ? GX_TRUE : GX_FALSE; }
+-  float lod_bias() const noexcept { return static_cast<float>(static_cast<int8_t>(get_bits(mode0, 8, 9))) / 32.0f; }
+-  GXAnisotropy max_aniso() const noexcept { return static_cast<GXAnisotropy>(get_bits(mode0, 2, 19)); }
+-  GXBool bias_clamp() const noexcept { return get_bits(mode0, 1, 21) != 0 ? GX_TRUE : GX_FALSE; }
+-  float min_lod() const noexcept { return static_cast<float>(get_bits(mode1, 8, 0)) / 16.0f; }
+-  float max_lod() const noexcept { return static_cast<float>(get_bits(mode1, 8, 8)) / 16.0f; }
+-
+-  // Custom flag for texture caching
+-  bool no_cache() const noexcept { return (flags & 0x80) != 0; }
+-  void set_no_cache(bool value) noexcept { flags = value ? flags | 0x80 : flags & ~0x80; }
+-};
+-static_assert(sizeof(GXTexObj_) <= sizeof(GXTexObj), "GXTexObj too small!");
+-struct GXTlutObj_ {
+-  u32 tlut = 0;
+-  u32 loadTlut0 = 0;
+-  u16 numEntries = 0;
+-  const void* data = nullptr;
+-  GXTlutFmt format = GX_TL_IA8;
+-  u32 tlutObjId = 0;
+-  u32 tlutDataVersion = 0;
+-  u8 flags = 0;
+-
+-  // Custom flag for texture caching
+-  bool no_cache() const noexcept { return (flags & 0x80) != 0; }
+-  void set_no_cache(bool value) noexcept { flags = value ? flags | 0x80 : flags & ~0x80; }
+-};
+-static_assert(sizeof(GXTlutObj_) <= sizeof(GXTlutObj), "GXTlutObj too small!");
+-
+ namespace aurora::gfx {
+ struct TextureBind {
+   TextureHandle ref;
+diff --git a/aurora-main/lib/gfx/texture_convert.cpp b/aurora-main/lib/gfx/texture_convert.cpp
+--- a/aurora-main/lib/gfx/texture_convert.cpp
++++ b/aurora-main/lib/gfx/texture_convert.cpp
+@@ -619,13 +619,13 @@
+     converted = BuildRGBA8FromCMPR(width, height, mips, data);
+     break;
+   }
+-  const auto wgpuFormat = to_wgpu(format);
++  const auto dataFormat = to_texture_data_format(format);
+   bool hasArbitraryMips = false;
+-  if (wgpuFormat == wgpu::TextureFormat::RGBA8Unorm && mips > 1) {
++  if (dataFormat == TextureDataFormat::RGBA8Unorm && mips > 1) {
+     hasArbitraryMips = arb_mip_check(width, height, mips, converted);
+   }
+   return {
+-      .format = wgpuFormat,
++      .format = dataFormat,
+       .width = width,
+       .height = height,
+       .mips = mips,
+@@ -656,7 +656,7 @@
+     break;
+   }
+   return {
+-      .format = wgpu::TextureFormat::RGBA8Unorm,
++      .format = TextureDataFormat::RGBA8Unorm,
+       .width = width,
+       .height = 1,
+       .mips = 1,
+@@ -715,7 +715,7 @@
+ 
+   bool hasArbitraryMips = arb_mip_check(baseWidth, baseHeight, mips, pixels);
+   return {
+-      .format = wgpu::TextureFormat::RGBA8Unorm,
++      .format = TextureDataFormat::RGBA8Unorm,
+       .width = baseWidth,
+       .height = baseHeight,
+       .mips = mips,
+diff --git a/aurora-main/lib/gfx/texture_convert.hpp b/aurora-main/lib/gfx/texture_convert.hpp
+--- a/aurora-main/lib/gfx/texture_convert.hpp
++++ b/aurora-main/lib/gfx/texture_convert.hpp
+@@ -1,23 +1,31 @@
+ #pragma once
+ 
++#include "texture_data.hpp"
++#ifndef MKW_PLATFORM_PS5
+ #include "common.hpp"
+ #include "texture.hpp"
+ #include "../webgpu/gpu.hpp"
++#endif
+ 
+ namespace aurora::gfx {
+-static constexpr wgpu::TextureFormat to_wgpu(u32 gxFormat) {
++static constexpr TextureDataFormat to_texture_data_format(u32 gxFormat) {
+   switch (gxFormat) {
+   case GX_TF_C4:
+   case GX_TF_C8:
+   case GX_TF_C14X2:
+-    return wgpu::TextureFormat::R16Sint;
++    return TextureDataFormat::R16Sint;
+   default:
+-    return wgpu::TextureFormat::RGBA8Unorm;
++    return TextureDataFormat::RGBA8Unorm;
+   }
+ }
+ 
++#ifndef MKW_PLATFORM_PS5
++// Compatibility for the existing WebGPU upload paths.
++static constexpr wgpu::TextureFormat to_wgpu(u32 gxFormat) { return to_texture_data_format(gxFormat); }
++#endif
++
+ struct ConvertedTexture {
+-  wgpu::TextureFormat format;
++  TextureDataFormat format;
+   uint32_t width;
+   uint32_t height;
+   uint32_t mips = 1;
+diff --git a/aurora-main/lib/byte_buffer.hpp b/aurora-main/lib/byte_buffer.hpp
+new file mode 100644
+--- /dev/null
++++ b/aurora-main/lib/byte_buffer.hpp
+@@ -0,0 +1,135 @@
++#pragma once
++// CPU byte storage shared by graphics backends. Moved unchanged from gfx/common.hpp.
++#include "internal.hpp"
++#include <cstdlib>
++#include <cstring>
++namespace aurora {
++class ByteBuffer {
++public:
++  ByteBuffer() noexcept = default;
++  explicit ByteBuffer(size_t size) noexcept
++  : m_data(static_cast<uint8_t*>(calloc(1, size))), m_length(size), m_capacity(size) {}
++  explicit ByteBuffer(uint8_t* data, size_t size) noexcept : m_data(data), m_capacity(size), m_owned(false) {}
++  ~ByteBuffer() noexcept {
++    if (m_data != nullptr && m_owned) {
++      free(m_data);
++    }
++  }
++  ByteBuffer(ByteBuffer&& rhs) noexcept
++  : m_data(rhs.m_data), m_length(rhs.m_length), m_capacity(rhs.m_capacity), m_owned(rhs.m_owned) {
++    rhs.m_data = nullptr;
++    rhs.m_length = 0;
++    rhs.m_capacity = 0;
++    rhs.m_owned = true;
++  }
++  ByteBuffer& operator=(ByteBuffer&& rhs) noexcept {
++    if (m_data != nullptr && m_owned) {
++      free(m_data);
++    }
++    m_data = rhs.m_data;
++    m_length = rhs.m_length;
++    m_capacity = rhs.m_capacity;
++    m_owned = rhs.m_owned;
++    rhs.m_data = nullptr;
++    rhs.m_length = 0;
++    rhs.m_capacity = 0;
++    rhs.m_owned = true;
++    return *this;
++  }
++  ByteBuffer(ByteBuffer const&) = delete;
++  ByteBuffer& operator=(ByteBuffer const&) = delete;
++  operator ArrayRef<uint8_t>() const noexcept { return {m_data, m_length}; }
++
++  [[nodiscard]] uint8_t* data() noexcept { return m_data; }
++  [[nodiscard]] const uint8_t* data() const noexcept { return m_data; }
++  [[nodiscard]] size_t size() const noexcept { return m_length; }
++  [[nodiscard]] bool empty() const noexcept { return m_length == 0; }
++
++  void append(const void* data, size_t size) {
++    resize(m_length + size, false);
++    memcpy(m_data + m_length, data, size);
++    m_length += size;
++  }
++
++  template <typename T>
++  void append(const T& obj) {
++    append(&obj, sizeof(T));
++  }
++
++  void append_zeroes(size_t size) {
++    resize(m_length + size, true);
++    m_length += size;
++  }
++
++  // Extend the buffer without clearing the new bytes. Only for callers that overwrite the whole
++  // region: the mapped staging buffers are megabytes of write-combine memory.
++  void append_uninitialized(size_t size) {
++    resize(m_length + size, false);
++    m_length += size;
++  }
++
++  void release() {
++    if (m_data != nullptr && m_owned) {
++      free(m_data);
++    }
++    m_data = nullptr;
++    m_length = 0;
++    m_capacity = 0;
++    m_owned = true;
++  }
++
++  void clear() {
++    m_length = 0;
++  }
++
++  void reserve_extra(size_t size) { resize(m_length + size, true); }
++
++  ByteBuffer clone() const {
++    ByteBuffer clone{m_length};
++    std::memcpy(clone.data(), m_data, m_length);
++    return clone;
++  }
++
++private:
++  uint8_t* m_data = nullptr;
++  size_t m_length = 0;
++  size_t m_capacity = 0;
++  bool m_owned = true;
++
++  // `size` is the total capacity needed. When `zeroed` is set, [m_length, size) has to read back as
++  // zero on every branch; the early return used to leave the previous frame's bytes in the padding.
++  void resize(size_t size, bool zeroed) {
++    if (size == 0) {
++      clear();
++      return;
++    }
++    const size_t zeroBegin = m_length;
++    if (m_data == nullptr) {
++      if (zeroed) {
++        m_data = static_cast<uint8_t*>(calloc(1, size));
++      } else {
++        m_data = static_cast<uint8_t*>(malloc(size));
++      }
++      m_owned = true;
++      m_capacity = size;
++      // calloc already cleared the whole allocation.
++      return;
++    }
++    if (size > m_capacity) {
++      if (!m_owned) {
++        abort();
++      }
++      // Exponential expansion to avoid O(n^2) time complexity.
++      size_t capacity = size;
++      if (capacity < m_capacity * 2) {
++        capacity = m_capacity * 2;
++      }
++      m_data = static_cast<uint8_t*>(realloc(m_data, capacity));
++      m_capacity = capacity;
++    }
++    if (zeroed && size > zeroBegin) {
++      memset(m_data + zeroBegin, 0, size - zeroBegin);
++    }
++  }
++};
++} // namespace aurora
+diff --git a/aurora-main/lib/gfx/texture_data.hpp b/aurora-main/lib/gfx/texture_data.hpp
+new file mode 100644
+--- /dev/null
++++ b/aurora-main/lib/gfx/texture_data.hpp
+@@ -0,0 +1,26 @@
++#pragma once
++#include "../byte_buffer.hpp"
++#include <algorithm>
++#include <dolphin/gx.h>
++#ifndef MKW_PLATFORM_PS5
++#include <webgpu/webgpu_cpp.h>
++#endif
++namespace aurora::gfx {
++// CPU conversion output. PS5 decoding must not pull in a WebGPU device or
++// texture object. Other backends retain their existing format ABI.
++#ifdef MKW_PLATFORM_PS5
++enum class TextureDataFormat { Undefined, RGBA8Unorm, R16Sint };
++#else
++using TextureDataFormat = wgpu::TextureFormat;
++#endif
++constexpr uint32_t max_texture_mip_count(uint32_t width, uint32_t height) noexcept {
++  uint32_t dimension = std::max(width, height);
++  uint32_t count = 1;
++  while (dimension > 1) {
++    dimension >>= 1;
++    ++count;
++  }
++  return count;
++}
++
++} // namespace aurora::gfx
+diff --git a/aurora-main/lib/gfx/render_types.hpp b/aurora-main/lib/gfx/render_types.hpp
+new file mode 100644
+--- /dev/null
++++ b/aurora-main/lib/gfx/render_types.hpp
+@@ -0,0 +1,44 @@
++#pragma once
++#include <cstdint>
++#include <cstring>
++
++// Plain values only; the viewport namespace is retained for desktop ABI.
++namespace aurora::webgpu {
++struct Viewport {
++  float left;
++  float top;
++  float width;
++  float height;
++  float znear;
++  float zfar;
++
++  bool operator==(const Viewport& rhs) const {
++    return left == rhs.left && top == rhs.top && width == rhs.width && height == rhs.height && znear == rhs.znear &&
++           zfar == rhs.zfar;
++  }
++  bool operator!=(const Viewport& rhs) const { return !(*this == rhs); }
++};
++
++}
++namespace aurora::gfx {
++struct Range {
++  uint32_t offset = 0;
++  uint32_t size = 0;
++
++  bool operator==(const Range& rhs) const { return memcmp(this, &rhs, sizeof(*this)) == 0; }
++  bool operator!=(const Range& rhs) const { return !(*this == rhs); }
++};
++
++struct ClipRect {
++  int32_t x;
++  int32_t y;
++  int32_t width;
++  int32_t height;
++
++  bool operator==(const ClipRect& rhs) const { return memcmp(this, &rhs, sizeof(*this)) == 0; }
++  bool operator!=(const ClipRect& rhs) const { return !(*this == rhs); }
++};
++
++using webgpu::Viewport;
++
++}
+diff --git a/aurora-main/lib/webgpu/gpu.hpp b/aurora-main/lib/webgpu/gpu.hpp
+--- a/aurora-main/lib/webgpu/gpu.hpp
++++ b/aurora-main/lib/webgpu/gpu.hpp
+@@ -4,6 +4,7 @@
+ #include <aurora/math.hpp>
+ 
+ #include "wgpu.hpp"
++#include "../gfx/render_types.hpp"
+ 
+ #include <array>
+ #include <cstdint>
+@@ -31,21 +32,6 @@
+   wgpu::Extent3D size;
+   wgpu::TextureFormat format;
+ };
+-struct Viewport {
+-  float left;
+-  float top;
+-  float width;
+-  float height;
+-  float znear;
+-  float zfar;
+-
+-  bool operator==(const Viewport& rhs) const {
+-    return left == rhs.left && top == rhs.top && width == rhs.width && height == rhs.height && znear == rhs.znear &&
+-           zfar == rhs.zfar;
+-  }
+-  bool operator!=(const Viewport& rhs) const { return !(*this == rhs); }
+-};
+-
+ extern wgpu::Device g_device;
+ extern wgpu::Queue g_queue;
+ extern wgpu::Surface g_surface;
+diff --git a/aurora-main/lib/dolphin/gx/texture_object.hpp b/aurora-main/lib/dolphin/gx/texture_object.hpp
+new file mode 100644
+--- /dev/null
++++ b/aurora-main/lib/dolphin/gx/texture_object.hpp
+@@ -0,0 +1,71 @@
++#pragma once
++#include "../../gfx/texture_data.hpp"
++
++namespace aurora::gfx { constexpr u32 InvalidTextureFormat = -1; }
++
++struct GXTexObj_ {
++  u32 mode0 = 0;
++  u32 mode1 = 0;
++  u32 image0 = UINT32_MAX;
++  u32 image3 = 0;
++  const void* userData = nullptr;
++  const void* data = nullptr;
++  u32 mWidth = 0;
++  u32 mHeight = 0;
++  u32 mFormat = aurora::gfx::InvalidTextureFormat;
++  GXTlut tlut = GX_TLUT0;
++  u32 texObjId = 0;
++  u32 texDataVersion = 0;
++  u8 flags = 0;
++
++  static constexpr u32 get_bits(u32 reg, u32 size, u32 shift) noexcept { return (reg >> shift) & ((1u << size) - 1); }
++
++  u32 width() const noexcept { return mWidth != 0 ? mWidth : get_bits(image0, 10, 0) + 1 & 0x3FF; }
++  u32 height() const noexcept { return mHeight != 0 ? mHeight : get_bits(image0, 10, 10) + 1 & 0x3FF; }
++  u32 raw_format() const noexcept { return get_bits(image0, 4, 20); }
++  u32 format() const noexcept { return mFormat != aurora::gfx::InvalidTextureFormat ? mFormat : raw_format(); }
++  GXTexWrapMode wrap_s() const noexcept { return static_cast<GXTexWrapMode>(get_bits(mode0, 2, 0)); }
++  GXTexWrapMode wrap_t() const noexcept { return static_cast<GXTexWrapMode>(get_bits(mode0, 2, 2)); }
++  GXTexFilter min_filter() const noexcept {
++    constexpr GXTexFilter kHwToGxFilter[8] = {
++        GX_NEAR, GX_NEAR_MIP_NEAR, GX_NEAR_MIP_LIN, GX_NEAR, GX_LINEAR, GX_LIN_MIP_NEAR, GX_LIN_MIP_LIN, GX_NEAR,
++    };
++    return kHwToGxFilter[get_bits(mode0, 3, 5)];
++  }
++  GXTexFilter mag_filter() const noexcept { return get_bits(mode0, 1, 4) != 0 ? GX_LINEAR : GX_NEAR; }
++  GXBool has_mips() const noexcept { return (flags & 1u) != 0 ? GX_TRUE : GX_FALSE; }
++  u32 mip_count() const noexcept {
++    if (!has_mips()) {
++      return 1;
++    }
++    const u32 requested = std::max<u32>(static_cast<u32>(max_lod()) + 1, 1u);
++    return std::min(requested, aurora::gfx::max_texture_mip_count(width(), height()));
++  }
++  GXBool do_edge_lod() const noexcept { return get_bits(mode0, 1, 8) == 0 ? GX_TRUE : GX_FALSE; }
++  float lod_bias() const noexcept { return static_cast<float>(static_cast<int8_t>(get_bits(mode0, 8, 9))) / 32.0f; }
++  GXAnisotropy max_aniso() const noexcept { return static_cast<GXAnisotropy>(get_bits(mode0, 2, 19)); }
++  GXBool bias_clamp() const noexcept { return get_bits(mode0, 1, 21) != 0 ? GX_TRUE : GX_FALSE; }
++  float min_lod() const noexcept { return static_cast<float>(get_bits(mode1, 8, 0)) / 16.0f; }
++  float max_lod() const noexcept { return static_cast<float>(get_bits(mode1, 8, 8)) / 16.0f; }
++
++  // Custom flag for texture caching
++  bool no_cache() const noexcept { return (flags & 0x80) != 0; }
++  void set_no_cache(bool value) noexcept { flags = value ? flags | 0x80 : flags & ~0x80; }
++};
++static_assert(sizeof(GXTexObj_) <= sizeof(GXTexObj), "GXTexObj too small!");
++struct GXTlutObj_ {
++  u32 tlut = 0;
++  u32 loadTlut0 = 0;
++  u16 numEntries = 0;
++  const void* data = nullptr;
++  GXTlutFmt format = GX_TL_IA8;
++  u32 tlutObjId = 0;
++  u32 tlutDataVersion = 0;
++  u8 flags = 0;
++
++  // Custom flag for texture caching
++  bool no_cache() const noexcept { return (flags & 0x80) != 0; }
++  void set_no_cache(bool value) noexcept { flags = value ? flags | 0x80 : flags & ~0x80; }
++};
++static_assert(sizeof(GXTlutObj_) <= sizeof(GXTlutObj), "GXTlutObj too small!");
++
+diff --git a/aurora-main/lib/hash.hpp b/aurora-main/lib/hash.hpp
+new file mode 100644
+--- /dev/null
++++ b/aurora-main/lib/hash.hpp
+@@ -0,0 +1,87 @@
++#pragma once
++#include "internal.hpp"
++#include <aurora/gfx.h>
++#include <cstddef>
++#include <cstdint>
++#include <type_traits>
++#define XXH_STATIC_LINKING_ONLY
++#include <xxhash.h>
++
++namespace aurora {
++#if INTPTR_MAX == INT32_MAX
++using HashType = XXH32_hash_t;
++#else
++using HashType = XXH64_hash_t;
++#endif
++static inline HashType xxh3_hash_s(const void* input, size_t len, HashType seed = 0) {
++  return static_cast<HashType>(XXH3_64bits_withSeed(input, len, seed));
++}
++template <typename T>
++static inline HashType xxh3_hash(const T& input, HashType seed = 0) {
++  // Validate that the type has no padding bytes, which can easily cause
++  // hash mismatches. This also disallows floats, but that's okay for us.
++  static_assert(std::has_unique_object_representations_v<T>);
++  return xxh3_hash_s(&input, sizeof(T), seed);
++}
++
++// Folds two 64-bit hashes. Chaining them instead drops XXH3 onto its seeded long path past 240
++// bytes, and that path regenerates a 192-byte secret on every call.
++static inline HashType hash_combine(HashType lhs, HashType rhs) {
++  uint64_t mixed = static_cast<uint64_t>(lhs) ^ (static_cast<uint64_t>(rhs) + 0x9E3779B97F4A7C15ull +
++                                                 (static_cast<uint64_t>(lhs) << 6) + (static_cast<uint64_t>(lhs) >> 2));
++  mixed ^= mixed >> 33;
++  mixed *= 0xFF51AFD7ED558CCDull;
++  mixed ^= mixed >> 29;
++  return static_cast<HashType>(mixed);
++}
++
++// Guest-RAM write tracking hooks (see aurora_set_guest_write_hooks). A digest samples the
++// generation before reading the bytes, so a racing write costs an extra digest, never a skipped one.
++inline constexpr uint64_t kGuestWriteUntracked = AURORA_GUEST_WRITE_UNTRACKED;
++inline AuroraGuestWriteGenerationCallback g_guestWriteGenerationHook = nullptr;
++inline AuroraGuestWriteNotifyCallback g_guestWriteNotifyHook = nullptr;
++
++inline uint64_t guest_write_generation(const void* data, size_t size) noexcept {
++  if (g_guestWriteGenerationHook == nullptr || data == nullptr || size == 0) {
++    return kGuestWriteUntracked;
++  }
++  return g_guestWriteGenerationHook(data, size);
++}
++
++inline void notify_guest_write(const void* data, size_t size) noexcept {
++  if (g_guestWriteNotifyHook == nullptr || data == nullptr || size == 0) {
++    return;
++  }
++  g_guestWriteNotifyHook(data, size);
++}
++
++// True when `stored` was taken over the same untouched bytes, so its digest still describes them.
++// The untracked sentinel never matches: a source aurora cannot watch is always re-digested.
++inline bool guest_write_generation_matches(uint64_t stored, uint64_t current) noexcept {
++  return current != kGuestWriteUntracked && stored == current;
++}
++
++class Hasher {
++public:
++  explicit Hasher(const XXH64_hash_t seed = 0) {
++    XXH3_INITSTATE(&state);
++    XXH3_64bits_reset_withSeed(&state, seed);
++  }
++
++  void update(const void* data, const size_t size) { XXH3_64bits_update(&state, data, size); }
++
++  template <typename T>
++  void update(const T& data) {
++    static_assert(std::has_unique_object_representations_v<T>);
++    update(&data, sizeof(T));
++  }
++
++  [[nodiscard]] XXH64_hash_t digest() const { return XXH3_64bits_digest(&state); }
++
++private:
++  XXH3_state_t state;
++};
++
++
++} // namespace aurora
++

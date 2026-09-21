@@ -1,0 +1,26 @@
+# Local game data, console runtime libraries and player state
+DATA/
+*.iso
+*.rvz
+*.wbfs
+*.prx
+UserData/NAND/
+UserData/Logs/
+# Release binaries belong in separately prepared release archives
+*.bin
+*.elf
+*.zip
+*.7z
+Backport/
+
+.tools/
+artifacts/
+/Wiicompiled/
+/SharpProspero/
+/ps5link-sdk/
+**/bin/
+**/obj/
+**/__pycache__/
+*.pyc
+ps5/local.json
+

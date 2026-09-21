@@ -1,0 +1,25 @@
+{
+  "repositories": [
+    {
+      "directory": "Wiicompiled",
+      "url": "https://github.com/patchzyy/Wiicompiled.git",
+      "commit": "209405dfb72c73d6bc26f5214bf4dfe0f8baae2f"
+    },
+    {
+      "directory": "ps5link-sdk",
+      "url": "https://github.com/Rufidj/ps5link-sdk.git",
+      "commit": "ea771e535378740b6a058b8e5419eb8a0e0e0ec8"
+    },
+    {
+      "directory": "SharpProspero",
+      "url": "https://github.com/SvenGDK/SharpProspero.git",
+      "commit": "9220876e25bc28aca1f65ea644783a479949ad77"
+    }
+  ],
+  "hostTools": {
+    "llvm-mingw": "20260908-ucrt-x86_64",
+    "dotnet-sdk": "10.0.401",
+    "nodtool": "v2.0.0-alpha.10",
+    "pwsh": "7.6.6 (portable, .tools/pwsh/7.6.6)"
+  }
+}

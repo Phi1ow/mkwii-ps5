@@ -1,0 +1,32 @@
+[
+  {
+    "archive": "SDL3-3.4.4.tar.gz",
+    "directory": "SDL3-3.4.4",
+    "url": "https://github.com/libsdl-org/SDL/releases/download/release-3.4.4/SDL3-3.4.4.tar.gz",
+    "sha256": "EE712DBE6A89BB140BBFC2CE72358FB5EE5CC2240ABEABD54855012DB30B3864"
+  },
+  {
+    "archive": "imgui-v1.91.9b-docking.tar.gz",
+    "directory": "imgui-1.91.9b-docking",
+    "url": "https://github.com/ocornut/imgui/archive/refs/tags/v1.91.9b-docking.tar.gz",
+    "sha256": "466FDEF9B18DE15F0BB6E288E3D00FFA3D82200EC458CE5E4F724A161D9528A5"
+  },
+  {
+    "archive": "xxHash-v0.8.3.tar.gz",
+    "directory": "xxHash-0.8.3",
+    "url": "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.3.tar.gz",
+    "sha256": "AAE608DFE8213DFD05D909A57718EF82F30722C392344583D3F39050C7F29A80"
+  },
+  {
+    "archive": "fmt-11.1.4.tar.gz",
+    "directory": "fmt-11.1.4",
+    "url": "https://github.com/fmtlib/fmt/archive/refs/tags/11.1.4.tar.gz",
+    "sha256": "AC366B7B4C2E9F0DDE63A59B3FEB5EE59B67974B14EE5DC9EA8AD78AA2C1EE1E"
+  },
+  {
+    "archive": "tracy-a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz",
+    "directory": "tracy-a64b9a20294d59421a2f57aeca3c6383d8c48169",
+    "url": "https://github.com/wolfpld/tracy/archive/a64b9a20294d59421a2f57aeca3c6383d8c48169.tar.gz",
+    "sha256": "24D342B5127D7F659DC3CF94F24347B348CC736F25B17A691FD7F69541937658"
+  }
+]

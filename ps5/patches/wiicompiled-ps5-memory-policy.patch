@@ -1,0 +1,521 @@
+diff --git a/runtime/include/guest_flat_memory.h b/runtime/include/guest_flat_memory.h
+index 6c0bdd3..3958d46 100644
+--- a/runtime/include/guest_flat_memory.h
++++ b/runtime/include/guest_flat_memory.h
+@@ -15,7 +15,11 @@ namespace GuestFlat {
+ // of a global.
+ inline constexpr uint64_t kGuestSpaceSize = 0x1'0000'0000ull;
+ inline constexpr size_t kGuestPageSize = 0x1000;
+-#if defined(__x86_64__)
++#if defined(MKW_PLATFORM_PS5)
++// Native reservation validated on PS5 Pro 9.40; the desktop 16 TiB address
++// lies beyond the console's application mapping range.
++inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'0020'0000'0000ull;
++#elif defined(__x86_64__)
+ // 16 TiB: clear of the Windows ASan shadow (32 TiB) and of the usual image/heap
+ // placement.
+ inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'1000'0000'0000ull;
+@@ -69,15 +73,19 @@ bool IsActive();
+ // configuration, guest-view page protection cannot safely represent per-Wii-
+ // page MMIO, deferred-read, or executable-write state, so general translated
+ // accesses must use the checked Memory::* path.
+-// Windows user mode and x86-64 always use a 4 KiB base page, so those builds
++// Desktop Windows and x86-64 use a 4 KiB base page, so those builds
+ // fold this to a compile-time false: it appears in every flat access and must
+ // not become a hot-path load. Only AArch64, where the page size is a kernel
+ // configuration (4/16/64 KiB), has to probe it at runtime.
+-#if defined(_WIN32) || defined(__x86_64__)
++#if defined(MKW_PLATFORM_PS5) || defined(_WIN32) || defined(__x86_64__)
+ #define MKW_GUEST_FLAT_FIXED_PAGE_SIZE 1
+ #endif
+ 
+-#if defined(MKW_GUEST_FLAT_FIXED_PAGE_SIZE)
++#if defined(MKW_PLATFORM_PS5)
++// PS5 is x86-64 but has 16 KiB VM pages. The checked paths retain exact Wii
++// 4 KiB EFB-read and executable-write policy within each native page.
++inline constexpr bool RequiresCheckedAccess() noexcept { return true; }
++#elif defined(MKW_GUEST_FLAT_FIXED_PAGE_SIZE)
+ inline constexpr bool RequiresCheckedAccess() noexcept { return false; }
+ #else
+ extern bool g_requiresCheckedAccess;
+diff --git a/runtime/include/memory.h b/runtime/include/memory.h
+index 14fe9ca..43beecb 100644
+--- a/runtime/include/memory.h
++++ b/runtime/include/memory.h
+@@ -3,6 +3,7 @@
+ #include <cstddef>
+ #include <cstdint>
+ #include <filesystem>
++#include <memory>
+ #include <stdexcept>
+ #include <string>
+ #include <string_view>
+@@ -104,6 +105,17 @@ public:
+ 
+     static uint64_t RegisterDeferredRead(uint32_t addr, size_t length,
+                                          DeferredReadCallback callback, void* user);
++    // Register one materialization for all three aliases of a mapped Wii RAM
++    // range. Keeps the callback context alive until completion/cancellation.
++    // Guest accesses and registration/cancellation require producer exclusion;
++    // this is not an asynchronous GPU callback API. The callback writes via
++    // GetPointer/HostPointer, without recursively reading its own range.
++    static uint64_t RegisterDeferredRamRead(uint32_t addr, size_t length,
++                                            DeferredReadCallback callback,
++                                            std::shared_ptr<void> user);
++    // Returns false for an unknown or currently executing callback. Cancelling
++    // discards the pending content; it does not materialize it into RAM.
++    static bool CancelDeferredRead(uint64_t token);
+     static void ClearDeferredReads();
+ 
+     // sizeBytes reports the storage actually allocated, which is not always the
+diff --git a/runtime/include/memory_access.h b/runtime/include/memory_access.h
+index 7ac535d..6321b05 100644
+--- a/runtime/include/memory_access.h
++++ b/runtime/include/memory_access.h
+@@ -91,6 +91,14 @@ MKW_MEMORY_NO_INLINE MKW_MEMORY_COLD void WriteResolvedFallbackFloat32(uint32_t
+ MKW_MEMORY_NO_INLINE MKW_MEMORY_COLD void WriteResolvedFallbackFloat64(uint32_t addr, double val);
+ bool ResolveDeferredReads(uint32_t addr, size_t length);
+ 
++// Scalar helpers only (at most eight bytes). Bulk HLE consumers must resolve
++// their full range explicitly before accessing a raw GetPointer/HostPointer.
++MKW_MEMORY_FORCE_INLINE bool DeferredScalarPending(uint32_t addr, size_t length) {
++    if (!length || length > 8 || addr > UINT32_MAX - (length - 1)) return true;
++    return g_deferredReadCoveredPages[addr >> kPageShift] ||
++           g_deferredReadCoveredPages[(addr + static_cast<uint32_t>(length - 1)) >> kPageShift];
++}
++
+ constexpr bool IsMmioAddress(uint32_t addr) {
+     return addr >= 0xCC000000u && addr < 0xCE000000u;
+ }
+@@ -173,6 +181,9 @@ MKW_MEMORY_FORCE_INLINE bool TryGetWritablePointerFast(
+     pointer = nullptr;
+     if (length == 0 || length > 8 || address > UINT32_MAX - (length - 1))
+         return false;
++#if defined(MKW_PLATFORM_PS5)
++    if (DeferredScalarPending(address, length)) return false;
++#endif
+     const uint32_t coarsePage = address >> kPageShift;
+     uintptr_t encodedBias = g_fullWritablePageBias[coarsePage];
+     const uint32_t endAddress = address + static_cast<uint32_t>(length - 1);
+@@ -338,6 +349,9 @@ MKW_MEMORY_FORCE_INLINE bool WriteResolvedScalar(uint8_t* host, uint32_t rangeOf
+ 
+ template <typename T>
+ inline bool TryReadMappedScalar(uint32_t address, T& outValue) {
++#if defined(MKW_PLATFORM_PS5)
++    if (DeferredScalarPending(address, sizeof(T))) return false;
++#endif
+     uint8_t* ptr = nullptr;
+     if (TryGetPointerFast(address, sizeof(T), ptr)) {
+         if constexpr (sizeof(T) == 1) {
+@@ -371,6 +385,9 @@ MKW_MEMORY_FORCE_INLINE bool TryReadGuestScalar(uint32_t address, T& outValue) {
+ template <typename T>
+ MKW_MEMORY_FORCE_INLINE bool TryWriteGuestScalar(uint32_t address, T value) {
+     static_assert(sizeof(T) >= 1 && sizeof(T) <= kMaxFastScalarSize);
++#if defined(MKW_PLATFORM_PS5)
++    if (DeferredScalarPending(address, sizeof(T))) return false;
++#endif
+     // A mixed executable/data 1 MiB page zeroes the coarse writable bias even though most of
+     // its 4 KiB sub-pages are plain data; MKW's THP buffers share such a page with .text, which
+     // used to force ~15% of total CPU through the cold path. The sparse sub-page tier below
+@@ -399,6 +416,9 @@ MKW_MEMORY_FORCE_INLINE bool TryWriteGuestScalar(uint32_t address, T value) {
+ 
+ template <typename T>
+ inline bool WriteStackScalarFast(uint32_t address, T value) {
++#if defined(MKW_PLATFORM_PS5)
++    if (DeferredScalarPending(address, sizeof(T))) return false;
++#endif
+     uint8_t* ptr = nullptr;
+     if (TryGetPointerFast(address, sizeof(T), ptr)) {
+         if constexpr (sizeof(T) == 1) {
+@@ -618,23 +638,28 @@ MKW_MEMORY_FORCE_INLINE void FlatWriteFloat64(uint32_t address, double value) {
+ // instead of dispatched inline. Never use these for an address the translator hasn't proven.
+ 
+ MKW_MEMORY_FORCE_INLINE void FlatWriteRam8(uint32_t address, uint8_t value) {
++    if (GuestFlat::RequiresCheckedAccess()) { Memory::Write8(address, value); return; }
+     FlatStore<uint8_t>(address, value);
+ }
+ 
+ MKW_MEMORY_FORCE_INLINE void FlatWriteRam16(uint32_t address, uint16_t value) {
++    if (GuestFlat::RequiresCheckedAccess()) { Memory::Write16(address, value); return; }
+     FlatStore<uint16_t>(address, value);
+ }
+ 
+ MKW_MEMORY_FORCE_INLINE void FlatWriteRam32(uint32_t address, uint32_t value) {
++    if (GuestFlat::RequiresCheckedAccess()) { Memory::Write32(address, value); return; }
+     FlatStore<uint32_t>(address, value);
+ }
+ 
+ 
+ MKW_MEMORY_FORCE_INLINE void FlatWriteRamFloat32(uint32_t address, double value) {
++    if (GuestFlat::RequiresCheckedAccess()) { Memory::WriteFloat32(address, value); return; }
+     FlatStore<uint32_t>(address, ConvertPpcDoubleToSingleBits(value));
+ }
+ 
+ MKW_MEMORY_FORCE_INLINE void FlatWriteRamFloat64(uint32_t address, double value) {
++    if (GuestFlat::RequiresCheckedAccess()) { Memory::WriteFloat64(address, value); return; }
+     uint64_t bits = 0;
+     std::memcpy(&bits, &value, sizeof(bits));
+     FlatStore<uint64_t>(address, bits);
+diff --git a/runtime/src/memory.cpp b/runtime/src/memory.cpp
+index 88a484e..53b0766 100644
+--- a/runtime/src/memory.cpp
++++ b/runtime/src/memory.cpp
+@@ -62,12 +62,18 @@ template void MemoryInline::WriteResolvedFallback<uint64_t>(uint32_t, uint64_t);
+ void MemoryInline::WriteResolvedFallbackFloat32(uint32_t addr, double val) { Memory::WriteFloat32(addr, val); }
+ void MemoryInline::WriteResolvedFallbackFloat64(uint32_t addr, double val) { Memory::WriteFloat64(addr, val); }
+ namespace {
+-struct DeferredRead {
+-    uint64_t token = 0;
++struct DeferredRange {
+     uint32_t start = 0;
+     size_t length = 0;
++};
++struct DeferredRead {
++    uint64_t token = 0;
++    std::array<DeferredRange, 3> ranges{};
++    size_t rangeCount = 1;
+     Memory::DeferredReadCallback callback = nullptr;
+     void* user = nullptr;
++    std::shared_ptr<void> owner;
++    bool executing = false;
+ };
+ 
+ std::mutex& DeferredReadMutex() {
+@@ -75,8 +81,8 @@ std::mutex& DeferredReadMutex() {
+     return mutex;
+ }
+ 
+-std::vector<DeferredRead>& DeferredReads() {
+-    static std::vector<DeferredRead> reads;
++std::vector<std::shared_ptr<DeferredRead>>& DeferredReads() {
++    static std::vector<std::shared_ptr<DeferredRead>> reads;
+     return reads;
+ }
+ 
+@@ -96,14 +102,52 @@ bool RangesOverlap(uint32_t firstStart, size_t firstLength,
+ void RefreshDeferredReadPage(uint32_t page) {
+     const uint32_t pageStart = page << MemoryInline::kPageShift;
+     const auto& reads = DeferredReads();
+-    const bool covered = std::any_of(reads.begin(), reads.end(), [pageStart](const DeferredRead& read) {
+-        return RangesOverlap(pageStart, MemoryInline::kPageSize, read.start, read.length);
++    const bool covered = std::any_of(reads.begin(), reads.end(), [pageStart](const auto& read) {
++        for (size_t i = 0; i < read->rangeCount; ++i) {
++            const auto& range = read->ranges[i];
++            // A fast scalar load can start in the preceding coarse page and
++            // cross into this range. Disable that start page as well.
++            const uint32_t first = range.start >= 7 ? range.start - 7 : 0;
++            if (RangesOverlap(pageStart, MemoryInline::kPageSize,
++                              first, range.length + (range.start - first))) return true;
++        }
++        return false;
+     });
+     MemoryInline::g_fullReadablePageBias[page] =
+         !covered ? MemoryInline::g_fullPageBias[page] : 0;
+     MemoryInline::g_deferredReadCoveredPages[page] = covered ? 1 : 0;
+ }
+ 
++void RefreshDeferredReadPages(const DeferredRead& read) {
++    for (size_t i = 0; i < read.rangeCount; ++i) {
++        const auto& range = read.ranges[i];
++        const uint32_t first = (range.start >= 7 ? range.start - 7 : 0) >> MemoryInline::kPageShift;
++        const uint32_t last = static_cast<uint32_t>(
++            (uint64_t(range.start) + range.length - 1) >> MemoryInline::kPageShift);
++        for (uint32_t page = first; page <= last; ++page) RefreshDeferredReadPage(page);
++    }
++}
++
++void ProtectDeferredRead(const DeferredRead& read) {
++    for (size_t i = 0; i < read.rangeCount; ++i)
++        GuestFlat::ProtectDeferredRange(read.ranges[i].start, read.ranges[i].length);
++}
++
++void UnprotectDeferredRead(const DeferredRead& read) {
++    for (size_t i = 0; i < read.rangeCount; ++i)
++        GuestFlat::UnprotectDeferredRange(read.ranges[i].start, read.ranges[i].length);
++}
++
++uint64_t InsertDeferredRead(const std::shared_ptr<DeferredRead>& read) {
++    std::lock_guard lock{DeferredReadMutex()};
++    read->token = NextDeferredReadToken()++;
++    if (!read->token) read->token = NextDeferredReadToken()++;
++    DeferredReads().push_back(read);
++    RefreshDeferredReadPages(*read);
++    ProtectDeferredRead(*read);
++    return read->token;
++}
++
+ struct Region {
+     Memory::RegionConfig config;
+     uint8_t* storagePtr = nullptr;
+@@ -147,80 +191,122 @@ void ClearPageTable() {
+ uint64_t Memory::RegisterDeferredRead(uint32_t addr, size_t length,
+                                       DeferredReadCallback callback, void* user) {
+     if (length == 0 || callback == nullptr ||
+-        static_cast<uint64_t>(addr) + length > (uint64_t{1} << 32)) {
++        length > (uint64_t{1} << 32) - addr) {
+         return 0;
+     }
+-
+-    std::lock_guard lock{DeferredReadMutex()};
+-    uint64_t token = NextDeferredReadToken()++;
+-    if (token == 0) token = NextDeferredReadToken()++;
+-    DeferredReads().push_back({token, addr, length, callback, user});
+-    const uint32_t firstPage = addr >> MemoryInline::kPageShift;
+-    const uint32_t lastPage = static_cast<uint32_t>(
+-        (static_cast<uint64_t>(addr) + length - 1) >> MemoryInline::kPageShift);
+-    for (uint32_t page = firstPage; page <= lastPage; ++page) {
+-        MemoryInline::g_fullReadablePageBias[page] = 0;
+-        MemoryInline::g_deferredReadCoveredPages[page] = 1;
+-    }
+-    // Clearing the readable bias only intercepts the checked path. A flat read
+-    // needs the host pages themselves to trap, which is what PAGE_NOACCESS on
+-    // the guest view does; the vectored handler materializes the copy, restores
+-    // the protection and re-runs the access.
+-    GuestFlat::ProtectDeferredRange(addr, length);
+-    return token;
+-}
+-
+-void Memory::ClearDeferredReads() {
+-    std::lock_guard lock{DeferredReadMutex()};
+-    auto& reads = DeferredReads();
+-    std::vector<uint32_t> pages;
+-    for (const auto& read : reads) {
+-        const uint32_t firstPage = read.start >> MemoryInline::kPageShift;
+-        const uint32_t lastPage = static_cast<uint32_t>(
+-            (static_cast<uint64_t>(read.start) + read.length - 1) >> MemoryInline::kPageShift);
+-        for (uint32_t page = firstPage; page <= lastPage; ++page) pages.push_back(page);
+-        GuestFlat::UnprotectDeferredRange(read.start, read.length);
++    auto read = std::make_shared<DeferredRead>();
++    read->ranges[0] = {addr, length};
++    read->callback = callback;
++    read->user = user;
++    return InsertDeferredRead(read);
++}
++
++uint64_t Memory::RegisterDeferredRamRead(uint32_t addr, size_t length,
++                                         DeferredReadCallback callback,
++                                         std::shared_ptr<void> user) {
++    if (!length || !callback || !user) return 0;
++    const uint32_t window = addr & 0xc0000000u;
++    if (window != 0 && window != 0x80000000u && window != 0xc0000000u) return 0;
++    const uint32_t physical = addr & 0x3fffffffu;
++    const bool mem1 = physical < kMem1Size;
++    const bool mem2 = physical >= kMem2PhysicalBase && physical < kMem2PhysicalEnd;
++    if (!mem1 && !mem2) return 0;
++    const uint64_t end = mem1 ? kMem1Size : kMem2PhysicalEnd;
++    if (length > end - physical) return 0;
++    auto read = std::make_shared<DeferredRead>();
++    read->rangeCount = 3;
++    read->ranges = {{{physical, length}, {physical | 0x80000000u, length},
++                     {physical | 0xc0000000u, length}}};
++    // Only accept actual coherent RAM aliases, including custom test layouts.
++    uint8_t* host = nullptr;
++    for (const auto& range : read->ranges) {
++        if (!Contains(range.start, length)) return 0;
++        auto* pointer = GetPointer(range.start, length);
++        if (host && pointer != host) return 0;
++        host = pointer;
++    }
++    read->callback = callback;
++    read->user = user.get();
++    read->owner = std::move(user);
++    return InsertDeferredRead(read);
++}
++
++bool Memory::CancelDeferredRead(uint64_t token) {
++    std::shared_ptr<DeferredRead> removed;
++    {
++        std::lock_guard lock{DeferredReadMutex()};
++        auto& reads = DeferredReads();
++        const auto it = std::find_if(reads.begin(), reads.end(),
++            [token](const auto& read) { return read->token == token; });
++        if (it == reads.end() || (*it)->executing) return false;
++        removed = *it;
++        reads.erase(it);
++        UnprotectDeferredRead(*removed);
++        RefreshDeferredReadPages(*removed);
++        // Native protection APIs may work at a coarser granularity than the
++        // ranges. Keep any remaining overlapping registrations protected.
++        for (const auto& read : reads) ProtectDeferredRead(*read);
+     }
+-    reads.clear();
+-    std::sort(pages.begin(), pages.end());
+-    pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+-    for (uint32_t page : pages) RefreshDeferredReadPage(page);
++    return true; // release callback ownership outside the registry mutex
+ }
+ 
+-bool MemoryInline::ResolveDeferredReads(uint32_t addr, size_t length) {
+-    std::vector<DeferredRead> matches;
+-    std::vector<uint32_t> affectedPages;
++void Memory::ClearDeferredReads() {
++    std::vector<std::shared_ptr<DeferredRead>> removed;
+     {
+         std::lock_guard lock{DeferredReadMutex()};
+         auto& reads = DeferredReads();
+-        for (auto it = reads.begin(); it != reads.end();) {
+-            if (!RangesOverlap(addr, length, it->start, it->length)) {
+-                ++it;
+-                continue;
+-            }
+-            const uint32_t firstPage = it->start >> kPageShift;
+-            const uint32_t lastPage = static_cast<uint32_t>(
+-                (static_cast<uint64_t>(it->start) + it->length - 1) >> kPageShift);
+-            for (uint32_t page = firstPage; page <= lastPage; ++page) affectedPages.push_back(page);
+-            matches.push_back(*it);
+-            // Idempotent: the vectored handler already dropped the protection
+-            // for the range whose trap brought us here.
+-            GuestFlat::UnprotectDeferredRange(it->start, it->length);
+-            it = reads.erase(it);
++        if (std::any_of(reads.begin(), reads.end(), [](const auto& read) { return read->executing; }))
++            throw std::logic_error("Cannot reset memory during deferred materialization");
++        removed.swap(reads);
++        for (const auto& read : removed) {
++            UnprotectDeferredRead(*read);
++            RefreshDeferredReadPages(*read);
+         }
+-        std::sort(affectedPages.begin(), affectedPages.end());
+-        affectedPages.erase(std::unique(affectedPages.begin(), affectedPages.end()), affectedPages.end());
+-        for (uint32_t page : affectedPages) RefreshDeferredReadPage(page);
+     }
++}
+ 
+-    // The range is removed before entering renderer code so any memory reads
+-    // made while submitting the copy cannot recursively trigger it.
+-    for (const auto& match : matches) {
+-        if (!match.callback(match.user)) {
+-            throw Memory::AccessViolation(addr, length, "deferred read materialization failed");
++bool MemoryInline::ResolveDeferredReads(uint32_t addr, size_t length) {
++    if (!length) return true;
++    if (length > (uint64_t{1} << 32) - addr)
++        throw Memory::AccessViolation(addr, length, "deferred read range overflow");
++    for (;;) {
++        std::shared_ptr<DeferredRead> match;
++        {
++            std::lock_guard lock{DeferredReadMutex()};
++            for (const auto& read : DeferredReads()) {
++                for (size_t i = 0; i < read->rangeCount; ++i) {
++                    if (RangesOverlap(addr, length, read->ranges[i].start, read->ranges[i].length)) {
++                        match = read;
++                        break;
++                    }
++                }
++                if (match) break;
++            }
++            if (!match) return true;
++            if (match->executing)
++                throw Memory::AccessViolation(addr, length, "recursive or concurrent deferred materialization");
++            match->executing = true;
++            UnprotectDeferredRead(*match);
++        }
++        // Keep the registration and owner until success. Failure must leave
++        // the readable guards active, otherwise a retry would return stale RAM.
++        try {
++            if (!match->callback(match->user))
++                throw Memory::AccessViolation(addr, length, "deferred read materialization failed");
++        } catch (...) {
++            std::lock_guard lock{DeferredReadMutex()};
++            match->executing = false;
++            ProtectDeferredRead(*match);
++            throw;
++        }
++        {
++            std::lock_guard lock{DeferredReadMutex()};
++            auto& reads = DeferredReads();
++            reads.erase(std::remove(reads.begin(), reads.end(), match), reads.end());
++            RefreshDeferredReadPages(*match);
++            for (const auto& read : reads) ProtectDeferredRead(*read);
+         }
+     }
+-    return true;
+ }
+ 
+ namespace {
+@@ -307,13 +393,7 @@ void RefreshFastPathTables() {
+     }
+     std::lock_guard lock{DeferredReadMutex()};
+     for (const auto& read : DeferredReads()) {
+-        const uint32_t firstPage = read.start >> MemoryInline::kPageShift;
+-        const uint32_t lastPage = static_cast<uint32_t>(
+-            (static_cast<uint64_t>(read.start) + read.length - 1) >> MemoryInline::kPageShift);
+-        for (uint32_t page = firstPage; page <= lastPage; ++page) {
+-            MemoryInline::g_fullReadablePageBias[page] = 0;
+-            MemoryInline::g_deferredReadCoveredPages[page] = 1;
+-        }
++        RefreshDeferredReadPages(*read);
+     }
+ }
+ 
+@@ -467,6 +547,10 @@ void WriteScalar(uint32_t address, T value) {
+         return;
+     }
+ 
++#if defined(MKW_PLATFORM_PS5)
++    // Preserve untouched bytes of a GPU copy before a partial guest store.
++    MemoryInline::ResolveDeferredReads(address, sizeof(T));
++#endif
+     auto* ptr = Memory::GetPointer(address, sizeof(T));
+     if constexpr (sizeof(T) == 1) {
+         *ptr = static_cast<uint8_t>(value);
+diff --git a/runtime/src/ppc_helpers.cpp b/runtime/src/ppc_helpers.cpp
+index 06e8488..e886fdd 100644
+--- a/runtime/src/ppc_helpers.cpp
++++ b/runtime/src/ppc_helpers.cpp
+@@ -856,24 +856,6 @@ extern "C" void PPC_PsqSt(uint32_t addr, double value, uint32_t w, uint32_t i)
+     }
+ }
+ 
+-extern "C" int32_t memset_zero_32(int32_t address)
+-{
+-    // dcbz zeros a 32-byte block.
+-    // The translator aligns the address to 32 bytes before calling this.
+-    try {
+-        // Try fast path: get direct pointer to memory
+-        uint8_t* ptr = Memory::GetPointer(static_cast<uint32_t>(address), 32);
+-        std::memset(ptr, 0, 32);
+-    } catch (...) {
+-        // Fallback or MMIO (rare for dcbz): write using scalar helpers
+-        uint32_t addr = static_cast<uint32_t>(address);
+-        for (int i = 0; i < 8; ++i) {
+-             Memory::Write32(addr + i * 4, 0);
+-        }
+-    }
+-    return 0;
+-}
+-
+ // Floating-point comparison (fcmpu/fcmpo)
+ // Sets the specified CR field based on comparing two double values.
+ extern "C" void PPC_Fcmp(uint32_t crField, double a, double b)
+diff --git a/runtime/src/ppc_memory_helpers.cpp b/runtime/src/ppc_memory_helpers.cpp
+new file mode 100644
+--- /dev/null
++++ b/runtime/src/ppc_memory_helpers.cpp
+@@ -0,0 +1,28 @@
++#include "memory.h"
++#include "recomp_mod_loader.h"
++#include <cstdint>
++#include <cstring>
++
++// Separated from ppc_helpers.cpp so the memory helper is linked and exercised
++// with the real Memory implementation independently of CPU/timebase services.
++extern "C" int32_t memset_zero_32(int32_t address)
++{
++    // The translator aligns the effective dcbz address to a 32-byte line.
++    const uint32_t addr = static_cast<uint32_t>(address);
++    // Resolve before obtaining a raw pointer. In particular, zeroing a line
++    // inside a pending EFB copy must preserve the copy's surrounding bytes.
++    // This is outside the mapping fallback: conversion failure must propagate
++    // once, not be hidden by a second attempt through eight scalar writes.
++    MemoryInline::ResolveDeferredReads(addr, 32);
++    if (RecompMod::ExecutableWriteGuardMayHit(addr, 32)) {
++        for (uint32_t i = 0; i < 8; ++i) Memory::Write32(addr + i * 4, 0);
++        return 0;
++    }
++    try {
++        std::memset(Memory::GetPointer(addr, 32), 0, 32);
++    } catch (const Memory::AccessViolation&) {
++        // Keep the existing checked path for unmapped or MMIO destinations.
++        for (uint32_t i = 0; i < 8; ++i) Memory::Write32(addr + i * 4, 0);
++    }
++    return 0;
++}

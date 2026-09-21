@@ -1,0 +1,72 @@
+diff --git a/runtime/src/hle/os/os_scheduler.cpp b/runtime/src/hle/os/os_scheduler.cpp
+index c6bbd00..f958b7e 100644
+--- a/runtime/src/hle/os/os_scheduler.cpp
++++ b/runtime/src/hle/os/os_scheduler.cpp
+@@ -2,6 +2,10 @@
+ 
+ #include <cstdint>
+ #include <iostream>
++#if defined(MKW_PLATFORM_PS5)
++#include <atomic>
++#include <chrono>
++#endif
+ 
+ #include "abi_bridge.h"
+ #include "memory.h"
+@@ -11,6 +15,22 @@
+ #include "runtime_log.h"
+ #include "os_internal.h"
+ 
++#if defined(MKW_PLATFORM_PS5)
++// PS5 performance accounting: host time the guest scheduler spends with no
++// runnable guest thread, and the part of it spent sleeping until the next VI
++// retrace. Read by the frame statistics in ps5/gpu/gx_frame_renderer.cpp.
++namespace {
++std::atomic<uint64_t> g_mkwGuestIdleNanos{0};
++std::atomic<uint64_t> g_mkwGuestIdleSleepNanos{0};
++inline uint64_t mkw_idle_clock() {
++    return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
++        std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++}
++extern "C" uint64_t mkw_guest_idle_nanos() { return g_mkwGuestIdleNanos.load(std::memory_order_relaxed); }
++extern "C" uint64_t mkw_guest_idle_sleep_nanos() { return g_mkwGuestIdleSleepNanos.load(std::memory_order_relaxed); }
++#endif
++
+ namespace {
+ void LinkMutexToThread(uint32_t threadPtr, uint32_t mutexPtr)
+ {
+@@ -221,6 +241,9 @@ extern "C" void SelectThread_801a9c08(CpuContext* ctx)
+         
+         // Set current context to idle thread context
+         OS__SetCurrentContext_801a1e70(kIdleThreadContextAddr);
++#if defined(MKW_PLATFORM_PS5)
++        const uint64_t mkwIdleStart = mkw_idle_clock();
++#endif
+         
+         while (true) {
+             // Enable interrupts and idle until something becomes runnable.
+@@ -244,7 +267,13 @@ extern "C" void SelectThread_801a9c08(CpuContext* ctx)
+                 if (::Memory::Read32(kSchedulerPendingFlagAddr) != 0) {
+                     break;
+                 }
++#if defined(MKW_PLATFORM_PS5)
++                const uint64_t mkwSleepStart = mkw_idle_clock();
++                VI_HLE_WaitForNextRetracePoll();
++                g_mkwGuestIdleSleepNanos.fetch_add(mkw_idle_clock() - mkwSleepStart, std::memory_order_relaxed);
++#else
+                 VI_HLE_WaitForNextRetracePoll();
++#endif
+             }
+ 
+             OS__DisableInterrupts_801a65ac();
+@@ -254,6 +283,9 @@ extern "C" void SelectThread_801a9c08(CpuContext* ctx)
+             }
+         }
+ 
++#if defined(MKW_PLATFORM_PS5)
++        g_mkwGuestIdleNanos.fetch_add(mkw_idle_clock() - mkwIdleStart, std::memory_order_relaxed);
++#endif
+         OS__ClearContext_801a2098(kIdleThreadContextAddr);
+     }
+ 

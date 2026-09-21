@@ -1,0 +1,20 @@
+{
+  "llvmRelease": "18.1.8",
+  "archives": [
+    {"name":"cmake-18.1.8.src.tar.xz","sha256":"59BADEF592DD34893CD319D42B323AAA990B452D05C7180FF20F23AB1B41E837"},
+    {"name":"libcxx-18.1.8.src.tar.xz","sha256":"BDECF90BE0072BC720FD5C9C8AB061CDB197EDD0C8AD3E170DC3E6BFAA49F388"},
+    {"name":"libcxxabi-18.1.8.src.tar.xz","sha256":"256C30D724EEB72713BC08AE1692F53AAF4EBE8A1D662C92BF59E69D6C53DCE9"},
+    {"name":"libunwind-18.1.8.src.tar.xz","sha256":"C31577D16978B0DA0E472EF751F74893A5B459A7EA4A383B75F7AB93CF1E6877"}
+  ],
+  "cmakeHelpers": [
+    {"name":"HandleFlags.cmake","sha256":"A45404BECFD848A5D8CB1074F44E32A38D570197479F71DF26A56E5A2B075E1B"},
+    {"name":"WarningFlags.cmake","sha256":"7BC97FA37F0BCE7860E810C0743ACD15F33ECFF2612A8589C79431A9B3AADA01"}
+  ],
+  "cHeaders": {
+    "url":"https://archive.freebsd.org/old-releases/amd64/9.3-RELEASE/base.txz",
+    "sha256":"EDA58DB8F30E502F3E1DFB3266048E73C6BE65FD820E132E2CBA6CF5AEE50C08",
+    "manifest":"https://archive.freebsd.org/old-releases/amd64/9.3-RELEASE/MANIFEST",
+    "extractOnly":"./usr/include",
+    "nativeAbiFullyVerified":false
+  }
+}

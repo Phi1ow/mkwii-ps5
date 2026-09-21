@@ -1,0 +1,85 @@
+--- a/runtime/include/abi_bridge.h
++++ b/runtime/include/abi_bridge.h
+@@ -18,6 +18,25 @@
+ #include <tuple>
+ #include <type_traits>
+ 
++#if defined(MKW_PLATFORM_PS5)
++// PS5 diagnostic attribution: the guest address of the native replacement
++// currently running on the guest thread (0 in translated code), read by the
++// sampling profiler (ps5/runtime/guest_sampler_ps5.cpp). One relaxed store
++// on entry and one on exit; nesting restores the caller's site.
++inline std::atomic<uint32_t> g_mkwNativeSite{0};
++struct MkwNativeSiteScope {
++    uint32_t previous;
++    explicit MkwNativeSiteScope(uint32_t site) noexcept
++        : previous(g_mkwNativeSite.load(std::memory_order_relaxed)) {
++        g_mkwNativeSite.store(site, std::memory_order_relaxed);
++    }
++    ~MkwNativeSiteScope() { g_mkwNativeSite.store(previous, std::memory_order_relaxed); }
++};
++#define MKW_NATIVE_SITE(address) MkwNativeSiteScope mkwNativeSite(address)
++#else
++#define MKW_NATIVE_SITE(address)
++#endif
++
+ inline void InvokeIndirectCpu(uint32_t target, CpuContext* ctx);
+ 
+ // Some game-facing runtime options alter arguments at well-defined ABI
+@@ -424,6 +443,10 @@
+     }
+ 
+     RecompMod::ScopedTranslatedExecutionAddress translatedExecution(info->address);
++#if defined(MKW_PLATFORM_PS5)
++    MkwNativeSiteScope nativeSite(info->kind == FunctionKind::Native
++        ? info->address : g_mkwNativeSite.load(std::memory_order_relaxed));
++#endif
+     PpcNonvolatileFprGuard fprGuard(cpu, NonvolatileFprGuardMaskFor(info));
+     PpcNonvolatileGprGuard gprGuard(cpu, ShouldPreserveNonvolatileGprsForRawCpuCall(info));
+     if (TryGetCpuContext() != cpu) {
+@@ -547,6 +570,7 @@
+     ApplyRuntimeCallOptions(Target, cpu);
+     if constexpr (KnownNativeCpuCall<Target>::kAvailable) {
+         const auto invokeKnownNative = [&]() {
++            MKW_NATIVE_SITE(Target);
+             PpcNonvolatileGprGuard gprGuard(cpu);
+             if (TryGetCpuContext() != cpu) {
+                 CpuContextScope scope(cpu);
+@@ -565,6 +589,7 @@
+     }
+ 
+     if constexpr (KnownTypedNativeCpuCall<Target>::kAvailable) {
++        MKW_NATIVE_SITE(Target);
+         PpcNonvolatileGprGuard gprGuard(cpu);
+         if (TryGetCpuContext() != cpu) {
+             CpuContextScope scope(cpu);
+--- a/runtime/include/hle_stubs.h
++++ b/runtime/include/hle_stubs.h
+@@ -39,9 +39,9 @@
+ // TranslatedBuildShardEmitter.cs and RuntimeNativeFunctionAbiProvider.cs together.
+ 
+ #define PPC_NATIVE_OVERRIDE(addr_hex, name, ret_type, arg_list, call_list) \
+-    extern "C" ret_type func_##addr_hex arg_list { return name call_list; } \
++    extern "C" ret_type func_##addr_hex arg_list { MKW_NATIVE_SITE(0x##addr_hex); return name call_list; } \
+     REGISTER_NATIVE_FUNCTION(0x##addr_hex, name)
+ 
+ #define PPC_NATIVE_OVERRIDE_VOID(addr_hex, name, arg_list, call_list) \
+-    extern "C" void func_##addr_hex arg_list { name call_list; } \
++    extern "C" void func_##addr_hex arg_list { MKW_NATIVE_SITE(0x##addr_hex); name call_list; } \
+     REGISTER_NATIVE_FUNCTION(0x##addr_hex, name)
+--- a/runtime/src/hle/gx/gx_stubs.cpp
++++ b/runtime/src/hle/gx/gx_stubs.cpp
+@@ -12,9 +12,10 @@
+     try { HleFifoWrite(raw, 4); } catch (...) { RT_LOGF(RT_TAG_GX, "FIFO write float failed\n"); }
+ }
+ 
+-extern "C" void GX_HLE_FIFO_Write32(uint32_t val) { HleFifoWrite(val, 4); }
+-extern "C" void GX_HLE_FIFO_Write16(uint16_t val) { HleFifoWrite(static_cast<u32>(val), 2); }
+-extern "C" void GX_HLE_FIFO_Write8(uint8_t val) { HleFifoWrite(static_cast<u32>(val), 1); }
++// The gather-pipe base marks these writes for the PS5 sampler.
++extern "C" void GX_HLE_FIFO_Write32(uint32_t val) { MKW_NATIVE_SITE(0xCC008000u); HleFifoWrite(val, 4); }
++extern "C" void GX_HLE_FIFO_Write16(uint16_t val) { MKW_NATIVE_SITE(0xCC008000u); HleFifoWrite(static_cast<u32>(val), 2); }
++extern "C" void GX_HLE_FIFO_Write8(uint8_t val) { MKW_NATIVE_SITE(0xCC008000u); HleFifoWrite(static_cast<u32>(val), 1); }
+ 
+ extern "C" void GX__SetDrawSync_8016ed08(uint32_t token) {
+     (void)token;

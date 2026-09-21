@@ -1,0 +1,10 @@
+diff --git a/tools/SharpProspero.Link/CompatEmitter.cs b/tools/SharpProspero.Link/CompatEmitter.cs
+--- a/tools/SharpProspero.Link/CompatEmitter.cs
++++ b/tools/SharpProspero.Link/CompatEmitter.cs
+@@ -3080,4 +3080,4 @@
+         ErrnoLocation(),
+-        StrError(),
+-        StrErrorR(),
++        StrError() with { Weak = true },
++        StrErrorR() with { Weak = true },
+         // Naming a thread. Two names reach the same work here, and only one of them answers the way

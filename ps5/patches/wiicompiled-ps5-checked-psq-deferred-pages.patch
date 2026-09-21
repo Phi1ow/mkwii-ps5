@@ -1,0 +1,242 @@
+diff --git a/runtime/include/memory_access.h b/runtime/include/memory_access.h
+index 8a14cd5..810c82f 100644
+--- a/runtime/include/memory_access.h
++++ b/runtime/include/memory_access.h
+@@ -68,6 +68,15 @@ extern const SparseWritablePageTable* g_sparseWritablePageTables[kPageCount];
+ // zero readable bias alone cannot distinguish "deferred content pending"
+ // from "small but plain memory"; range resolution needs the explicit flag.
+ extern uint8_t g_deferredReadCoveredPages[kPageCount];
++// Refinement of a covered 1 MiB page by 4 KiB guest page: the number of pending
++// deferred ranges marking the page. A range [start, end) marks every page of
++// [start - 7, end), so a scalar access of at most eight bytes can overlap it
++// only when its first byte lies on a marked page. Without it, one pending
++// GXCopyTex destination sent every access of its whole 1 MiB page (game heap
++// included) through the mutex-guarded cold path.
++inline constexpr uint32_t kDeferredSubPageShift = 12;
++inline constexpr uint32_t kDeferredSubPageCount = 1u << (32 - kDeferredSubPageShift);
++extern uint16_t g_deferredReadCoveredSubPages[kDeferredSubPageCount];
+ 
+ MKW_MEMORY_NO_INLINE MKW_MEMORY_COLD uint8_t Read8Slow(uint32_t addr);
+ MKW_MEMORY_NO_INLINE MKW_MEMORY_COLD uint16_t Read16Slow(uint32_t addr);
+@@ -95,8 +104,9 @@ bool ResolveDeferredReads(uint32_t addr, size_t length);
+ // their full range explicitly before accessing a raw GetPointer/HostPointer.
+ MKW_MEMORY_FORCE_INLINE bool DeferredScalarPending(uint32_t addr, size_t length) {
+     if (!length || length > 8 || addr > UINT32_MAX - (length - 1)) return true;
+-    return g_deferredReadCoveredPages[addr >> kPageShift] ||
+-           g_deferredReadCoveredPages[(addr + static_cast<uint32_t>(length - 1)) >> kPageShift];
++    if (!g_deferredReadCoveredPages[addr >> kPageShift] &&
++        !g_deferredReadCoveredPages[(addr + static_cast<uint32_t>(length - 1)) >> kPageShift]) return false;
++    return g_deferredReadCoveredSubPages[addr >> kDeferredSubPageShift] != 0;
+ }
+ 
+ constexpr bool IsMmioAddress(uint32_t addr) {
+@@ -253,10 +263,17 @@ MKW_MEMORY_FORCE_INLINE uint8_t* ResolveRangeHost(uint32_t base, int32_t minOffs
+     {
+         const uint32_t page = guestStart >> kPageShift;
+         if (((guestStart + (length - 1)) >> kPageShift) != page) return nullptr;
+-        if (g_deferredReadCoveredPages[page]) return nullptr;
+         // Each bias is non-zero only for a fully mapped 1 MiB page; the writable
+         // one is also zero whenever the page holds any executable-write guard.
+-        const uintptr_t readable = g_fullReadablePageBias[page];
++        uintptr_t readable = g_fullReadablePageBias[page];
++        if (g_deferredReadCoveredPages[page]) {
++            // Every scalar of the range starts inside it, so it is clear of all
++            // pending deferred reads when none of its 4 KiB pages is marked.
++            const uint32_t lastSubPage = (guestStart + (length - 1)) >> kDeferredSubPageShift;
++            for (uint32_t subPage = guestStart >> kDeferredSubPageShift; subPage <= lastSubPage; ++subPage)
++                if (g_deferredReadCoveredSubPages[subPage]) return nullptr;
++            readable = g_fullPageBias[page];
++        }
+         const uintptr_t writable = g_fullWritablePageBias[page];
+         uintptr_t bias = 0;
+         if (needsWrite) {
+@@ -395,12 +412,34 @@ inline bool TryReadMappedScalar(uint32_t address, T& outValue) {
+     return false;
+ }
+ 
++// Host pointer proving a guest scalar load of at most eight bytes, or nullptr
++// when it needs the cold path (unmapped or last page of a mapping, pending
++// deferred read). Shared by Memory::Read* and, on hosts without guest-view page
++// protections, the paired-single loads of isa/ppc_isa_quantized.h.
++MKW_MEMORY_FORCE_INLINE const uint8_t* TryGetReadableScalarHost(uint32_t address) {
++    const uint32_t page = address >> kPageShift;
++    uintptr_t encodedBias = g_fullReadablePageBias[page];
++    if (encodedBias == 0) [[unlikely]] {
++#if defined(MKW_PLATFORM_PS5)
++        // A pending deferred read zeroes the readable bias of its whole 1 MiB
++        // page; only the 4 KiB pages it marks need the cold path.
++        if (!g_deferredReadCoveredPages[page] || g_deferredReadCoveredSubPages[address >> kDeferredSubPageShift])
++            return nullptr;
++        encodedBias = g_fullPageBias[page];
++        if (encodedBias == 0)
++            return nullptr;
++#else
++        return nullptr;
++#endif
++    }
++    return reinterpret_cast<const uint8_t*>((encodedBias - 1u) + address);
++}
++
+ template <typename T>
+ MKW_MEMORY_FORCE_INLINE bool TryReadGuestScalar(uint32_t address, T& outValue) {
+-    const uintptr_t encodedBias = g_fullReadablePageBias[address >> kPageShift];
+-    if (encodedBias == 0) [[unlikely]]
++    const uint8_t* ptr = TryGetReadableScalarHost(address);
++    if (ptr == nullptr) [[unlikely]]
+         return false;
+-    auto* ptr = reinterpret_cast<uint8_t*>((encodedBias - 1u) + address);
+     if constexpr (sizeof(T) == 1) {
+         outValue = *ptr;
+     } else {
+@@ -411,29 +450,40 @@ MKW_MEMORY_FORCE_INLINE bool TryReadGuestScalar(uint32_t address, T& outValue) {
+     return true;
+ }
+ 
+-template <typename T>
+-MKW_MEMORY_FORCE_INLINE bool TryWriteGuestScalar(uint32_t address, T value) {
+-    static_assert(sizeof(T) >= 1 && sizeof(T) <= kMaxFastScalarSize);
++// Host pointer proving a guest scalar store of `size` (1..8) bytes, or nullptr
++// when it needs the cold path (pending deferred read, 1 MiB page crossing,
++// executable-write guard, MMIO or unmapped page). Shared by Memory::Write* and,
++// on hosts without guest-view page protections, the paired-single stores.
++MKW_MEMORY_FORCE_INLINE uint8_t* TryGetWritableScalarHost(uint32_t address, uint32_t size) {
+ #if defined(MKW_PLATFORM_PS5)
+-    if (DeferredScalarPending(address, sizeof(T))) return false;
++    if (DeferredScalarPending(address, size)) return nullptr;
+ #endif
+     // A mixed executable/data 1 MiB page zeroes the coarse writable bias even though most of
+     // its 4 KiB sub-pages are plain data; MKW's THP buffers share such a page with .text, which
+     // used to force ~15% of total CPU through the cold path. The sparse sub-page tier below
+     // keeps those stores native while the exact 4 KiB executable guards stay authoritative.
+-    if (address > UINT32_MAX - static_cast<uint32_t>(sizeof(T) - 1u)) [[unlikely]]
+-        return false;
++    if (address > UINT32_MAX - (size - 1u)) [[unlikely]]
++        return nullptr;
+     const uint32_t coarsePage = address >> kPageShift;
+-    const uint32_t endAddress = address + static_cast<uint32_t>(sizeof(T) - 1u);
++    const uint32_t endAddress = address + (size - 1u);
+     if ((endAddress >> kPageShift) != coarsePage) [[unlikely]]
+-        return false;
++        return nullptr;
+     const uintptr_t encodedBias = g_fullWritablePageBias[coarsePage];
+     uint8_t* ptr = nullptr;
+     if (encodedBias != 0) {
+         ptr = reinterpret_cast<uint8_t*>((encodedBias - 1u) + address);
+-    } else if (!TryGetWritablePointerFast(address, sizeof(T), ptr)) [[unlikely]] {
+-        return false;
++    } else if (!TryGetWritablePointerFast(address, size, ptr)) [[unlikely]] {
++        return nullptr;
+     }
++    return ptr;
++}
++
++template <typename T>
++MKW_MEMORY_FORCE_INLINE bool TryWriteGuestScalar(uint32_t address, T value) {
++    static_assert(sizeof(T) >= 1 && sizeof(T) <= kMaxFastScalarSize);
++    uint8_t* ptr = TryGetWritableScalarHost(address, static_cast<uint32_t>(sizeof(T)));
++    if (ptr == nullptr) [[unlikely]]
++        return false;
+     if constexpr (sizeof(T) == 1) {
+         *ptr = static_cast<uint8_t>(value);
+     } else {
+diff --git a/runtime/include/isa/ppc_isa_quantized.h b/runtime/include/isa/ppc_isa_quantized.h
+index bc22f01..ba45a2e 100644
+--- a/runtime/include/isa/ppc_isa_quantized.h
++++ b/runtime/include/isa/ppc_isa_quantized.h
+@@ -264,9 +264,17 @@ inline void PpcWritePairPsqInline(uint32_t addr, T first, T second)
+ // reading stale bytes, and unmapped pages commit on demand, same as MemoryInline::Flat* loads.
+ MKW_PPC_FORCE_INLINE const uint8_t* PpcTryGetPsqReadableHostInline(uint32_t addr)
+ {
++#if defined(MKW_PLATFORM_PS5)
++    // The PS5 guest view has no page protections (checked access), so the flat
++    // pointer below would skip pending deferred reads. Returning null for every
++    // address sent each paired load through the mutex-guarded Read64Slow; use
++    // Memory::Read64's own proof and keep Read64Slow for what it refuses.
++    return MemoryInline::TryGetReadableScalarHost(addr);
++#else
+     if (GuestFlat::RequiresCheckedAccess()) [[unlikely]]
+         return nullptr;
+     return MKW_FLAT_GUEST_BASE + addr;
++#endif
+ }
+ 
+ // Same reduction for stores. Still refuses a 32-bit address wrap (one host access can't
+@@ -276,6 +284,11 @@ MKW_PPC_FORCE_INLINE const uint8_t* PpcTryGetPsqReadableHostInline(uint32_t addr
+ // executable, and unmapped pages still trap.
+ MKW_PPC_FORCE_INLINE uint8_t* PpcTryGetPsqWritableHostInline(uint32_t addr)
+ {
++#if defined(MKW_PLATFORM_PS5)
++    // Same as the load above: Memory::Write64's proof (deferred reads,
++    // executable-write guards, MMIO), Write64Slow for everything it refuses.
++    return MemoryInline::TryGetWritableScalarHost(addr, 8u);
++#endif
+     if (GuestFlat::RequiresCheckedAccess()) [[unlikely]]
+         return nullptr;
+     if (addr > UINT32_MAX - 7u) [[unlikely]]
+diff --git a/runtime/src/memory.cpp b/runtime/src/memory.cpp
+index 76c8ad1..f596851 100644
+--- a/runtime/src/memory.cpp
++++ b/runtime/src/memory.cpp
+@@ -157,6 +157,21 @@ void RefreshDeferredReadPage(uint32_t page) {
+     MemoryInline::g_deferredReadCoveredPages[page] = covered ? 1 : 0;
+ }
+ 
++// Registers (+1) or retires (-1) the 4 KiB page marks of a deferred read, with
++// the same [start - 7, end) extent as the 1 MiB pages above. Called under the
++// registry mutex whenever the read enters or leaves DeferredReads().
++void AdjustDeferredReadSubPages(const DeferredRead& read, int delta) {
++    for (size_t i = 0; i < read.rangeCount; ++i) {
++        const auto& range = read.ranges[i];
++        const uint32_t first = (range.start >= 7 ? range.start - 7 : 0) >> MemoryInline::kDeferredSubPageShift;
++        const uint32_t last = static_cast<uint32_t>(
++            (uint64_t(range.start) + range.length - 1) >> MemoryInline::kDeferredSubPageShift);
++        for (uint32_t subPage = first; subPage <= last; ++subPage)
++            MemoryInline::g_deferredReadCoveredSubPages[subPage] =
++                static_cast<uint16_t>(MemoryInline::g_deferredReadCoveredSubPages[subPage] + delta);
++    }
++}
++
+ void RefreshDeferredReadPages(const DeferredRead& read) {
+     for (size_t i = 0; i < read.rangeCount; ++i) {
+         const auto& range = read.ranges[i];
+@@ -182,6 +197,7 @@ uint64_t InsertDeferredRead(const std::shared_ptr<DeferredRead>& read) {
+     read->token = NextDeferredReadToken()++;
+     if (!read->token) read->token = NextDeferredReadToken()++;
+     DeferredReads().push_back(read);
++    AdjustDeferredReadSubPages(*read, +1);
+     RefreshDeferredReadPages(*read);
+     ProtectDeferredRead(*read);
+     return read->token;
+@@ -227,6 +243,8 @@ void ClearPageTable() {
+ 
+ } // namespace
+ 
++uint16_t MemoryInline::g_deferredReadCoveredSubPages[MemoryInline::kDeferredSubPageCount]{};
++
+ uint64_t Memory::RegisterDeferredRead(uint32_t addr, size_t length,
+                                       DeferredReadCallback callback, void* user) {
+     if (length == 0 || callback == nullptr ||
+@@ -281,6 +299,7 @@ bool Memory::CancelDeferredRead(uint64_t token) {
+         removed = *it;
+         reads.erase(it);
+         UnprotectDeferredRead(*removed);
++        AdjustDeferredReadSubPages(*removed, -1);
+         RefreshDeferredReadPages(*removed);
+         // Native protection APIs may work at a coarser granularity than the
+         // ranges. Keep any remaining overlapping registrations protected.
+@@ -299,6 +318,7 @@ void Memory::ClearDeferredReads() {
+         removed.swap(reads);
+         for (const auto& read : removed) {
+             UnprotectDeferredRead(*read);
++            AdjustDeferredReadSubPages(*read, -1);
+             RefreshDeferredReadPages(*read);
+         }
+     }
+@@ -342,6 +362,7 @@ bool MemoryInline::ResolveDeferredReads(uint32_t addr, size_t length) {
+             std::lock_guard lock{DeferredReadMutex()};
+             auto& reads = DeferredReads();
+             reads.erase(std::remove(reads.begin(), reads.end(), match), reads.end());
++            AdjustDeferredReadSubPages(*match, -1);
+             RefreshDeferredReadPages(*match);
+             for (const auto& read : reads) ProtectDeferredRead(*read);
+         }

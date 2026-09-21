@@ -1,0 +1,48 @@
+diff --git a/runtime/src/system_bridge.cpp b/runtime/src/system_bridge.cpp
+index 8b07d12..008de9b 100644
+--- a/runtime/src/system_bridge.cpp
++++ b/runtime/src/system_bridge.cpp
+@@ -349,6 +349,15 @@ void SystemBridge::Initialize() {
+         if (funcAddr == 0 || funcAddr == 0xFFFFFFFF) continue;
+ 
+         if (TranslatedFunctionRegistry::FindByAddressPtr(funcAddr)) {
++#if defined(MKW_PLATFORM_PS5)
++            // The PS5 backend uses checked guest accesses and deliberately has
++            // no unverified POSIX signal recovery handler. Invoke directly;
++            // a native host fault remains fatal instead of pretending it was
++            // recoverable via a signal-mask ABI from the FreeBSD headers.
++            cpu.gpr[1] = 0x81700000u;
++            InvokeIndirectCpu(funcAddr, &cpu);
++            dolCount++;
++#else
+             MkwJmpBuf jumpBuf;
+             g_sehJumpTarget = &jumpBuf;
+             if (MKW_SETJMP(jumpBuf) == 0) {
+@@ -366,6 +375,7 @@ void SystemBridge::Initialize() {
+                 std::cerr << std::dec << " - skipping." << std::endl;
+             }
+             g_sehJumpTarget = nullptr;
++#endif
+         }
+     }
+     RT_LOG(RT_TAG_RUNTIME) << "Executed " << dolCount << " main DOL static constructors." << std::endl;
+@@ -389,6 +399,11 @@ void SystemBridge::Initialize() {
+         if (funcAddr == 0 || funcAddr == 0xFFFFFFFF) continue;
+ 
+         if (TranslatedFunctionRegistry::FindByAddressPtr(funcAddr)) {
++#if defined(MKW_PLATFORM_PS5)
++            cpu.gpr[1] = 0x81700000u;
++            InvokeIndirectCpu(funcAddr, &cpu);
++            count++;
++#else
+             MkwJmpBuf jumpBuf;
+             g_sehJumpTarget = &jumpBuf;
+             if (MKW_SETJMP(jumpBuf) == 0) {
+@@ -406,6 +421,7 @@ void SystemBridge::Initialize() {
+                 std::cerr << std::dec << " - skipping." << std::endl;
+             }
+             g_sehJumpTarget = nullptr;
++#endif
+         }
+     }
+     g_suppressSehReporting = false;
