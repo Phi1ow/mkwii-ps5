@@ -11,6 +11,7 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 > Bring your own Mario Kart Wii PAL disc data. Other regions are not supported by this executable.
 >
 > Compatible with **PS5 and PS5 Pro** (jailbroken consoles).
+> 
 > Another repo with Retro Rewind coming soon x)
 ---
 
