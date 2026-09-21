@@ -31,7 +31,6 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 ### Known limitations
 
 - The 2D mini-map during races does not display correctly.
-- Standard PS5 hardware has not been tested according to the release documentation.
 - Firmware-specific packages are not a compatibility test. See [firmware notes](docs/FIRMWARE.md).
 
 ## Requirements
