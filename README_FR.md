@@ -10,7 +10,7 @@ Portage natif de **Mario Kart Wii PAL (RMCP01)** sur PlayStation 5, basé sur [W
 
 > Il faut fournir les données de sa propre copie de Mario Kart Wii PAL. Cet exécutable ne prend pas en charge les autres régions.
 >
-> La documentation de la version fournie indique des essais sur PS5, PS5 Pro. 
+> La documentation de la version fournie indique des essais sur **PS5 Pro, firmware 9.40**. La PS5 standard et les autres firmwares ne sont pas confirmés.
 
 ---
 
@@ -42,13 +42,15 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 - Une extraction personnelle de Mario Kart Wii PAL contenant `DATA/sys/main.dol` et `DATA/files/rel/StaticR.rel`.
 - Environ 3 Go disponibles sur la console.
 
-## Distribution des sources uniquement
+## Téléchargement et fichiers personnels du jeu
 
-**Aucun binaire prêt à jouer n'est actuellement proposé.** Les archives ont été retirées après confirmation que la recompilation statique intègre des données DOL/REL du jeu dans `eboot.bin`. Retirer l'image disque ou le dossier `DATA/` ne suffit donc pas à supprimer ces données intégrées.
+[Télécharger l'application recompilée et les variantes de firmware](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
 
-Ce dépôt fournit les sources du portage, les modifications des dépendances et la documentation. Il faut sa propre copie de Mario Kart Wii PAL (RMCP01). Voir le [guide d'extraction personnelle](docs/INSTALL_FR.md) et les [notes de compilation](docs/BUILDING.md). La compilation depuis un environnement vierge reste à valider.
+Les exécutables recompilés sont fournis. Les images disque (ISO/RVZ/WBFS), les fichiers extraits `main.dol` / `StaticR.rel` et le dossier DATA du jeu ne sont **pas** fournis. Extraire sa propre copie PAL RMCP01 en suivant le [guide d'installation](docs/INSTALL_FR.md). Fournir une bibliothèque signée `libc.prx` adaptée au firmware dans `PPSA99611/sce_module/libc.prx` ; les bibliothèques Sony et les sauvegardes personnelles ne sont pas incluses.
 
-Ne pas publier d'image disque, de fichiers extraits, de sources traduites du jeu, de blocs de données générés, d'exécutables du jeu, de bibliothèques Sony ou de NAND personnelle dans ce dépôt, les releases, les issues ou les pull requests. La licence du projet ne confère aucun droit sur les données du jeu ou les marques de tiers.
+L'exécutable est issu d'une recompilation statique et conserve du code/des données intégrés provenant du jeu. Exclure les fichiers ROM séparés ne supprime pas ce contenu : le binaire n'est pas présenté comme dépourvu de données du jeu. Le paquet nettoyé reste en préversion en attendant un nouvel essai sur console.
+
+Ne pas joindre d'image disque, de fichiers extraits, de bibliothèques Sony ou de NAND personnelle aux issues ou aux pull requests.
 ## Installation
 
 Suivre le [guide complet en français](docs/INSTALL_FR.md) ou le [guide en anglais](docs/INSTALL_EN.md).
@@ -118,6 +120,7 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
+
 
 
 

@@ -10,7 +10,7 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 
 > Bring your own Mario Kart Wii PAL disc data. Other regions are not supported by this executable.
 >
-> The supplied release documentation reports testing on PS5 Pro, PS5.
+> The supplied release documentation reports testing on **PS5 Pro, firmware 9.40**. Standard PS5 hardware and other firmware versions are not confirmed.
 
 ---
 
@@ -42,13 +42,15 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 - Your own Mario Kart Wii PAL extraction, with `DATA/sys/main.dol` and `DATA/files/rel/StaticR.rel`.
 - Approximately 3 GB of available console storage.
 
-## Source-only distribution
+## Download and personal game files
 
-**No ready-to-play binaries are currently offered.** The binary archives were withdrawn after confirming that the static recompilation embeds DOL/REL game data inside `eboot.bin`. Removing the disc image or `DATA/` folder alone does not remove those embedded bytes.
+[Download the recompiled application and firmware overlays](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
 
-This repository provides port sources, dependency modifications and documentation. Supply your own Mario Kart Wii PAL (RMCP01) copy. See the [personal extraction guide](docs/INSTALL_EN.md) and [build notes](docs/BUILDING.md). A clean build is not yet validated.
+The recompiled executables are included. Separate disc images (ISO/RVZ/WBFS), extracted `main.dol` / `StaticR.rel` files and the extracted game DATA tree are **not** supplied. Extract your own PAL RMCP01 copy using the [installation guide](docs/INSTALL_EN.md). Supply a firmware-compatible signed `libc.prx` at `PPSA99611/sce_module/libc.prx`; Sony libraries and personal saves are not included.
 
-Do not upload disc images, extracted game files, translated game sources, generated data blobs, game executables, Sony libraries or personal NANDs to this repository, releases, issues or pull requests. Project licensing does not grant rights to third-party game data or trademarks.
+The executable is a static recompilation and retains embedded game-derived code/data. Excluding separate ROM files does not remove that content; this is not a claim that the binary contains no game data. The cleaned package remains a pre-release pending a console retest.
+
+Do not upload disc images, extracted files, Sony libraries or personal NANDs in issues or pull requests.
 ## Installing
 
 Follow the [English installation guide](docs/INSTALL_EN.md) or [French installation guide](docs/INSTALL_FR.md).
@@ -118,6 +120,7 @@ Include console model, firmware, package variant, track and steps to reproduce. 
 ## Repository status
 
 The PS5 source code and pinned dependency modifications are included. See [build notes](docs/BUILDING.md), [release notes](docs/RELEASE-NOTES.md) and [license notices](THIRD-PARTY-NOTICES.md). A clean build has not been verified.
+
 
 
 
