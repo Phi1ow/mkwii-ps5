@@ -19,7 +19,7 @@ Portage natif de **Mario Kart Wii PAL (RMCP01)** sur PlayStation 5, basé sur [W
 | Fonction | État |
 | --- | --- |
 | Rendu GPU natif | Moteur AGC |
-| Fréquence d'affichage | 60 images/s rapportées sur PS5 Pro après la mise en pause de kstuff |
+| Fréquence d'affichage | 60 images/s rapportées sur PS5 / PS5 Pro après la mise en pause de kstuff |
 | Manette | DualSense avec correspondance GameCube |
 | Sauvegardes | NAND locale dans `UserData/NAND` |
 | Région | PAL, RMCP01 |
@@ -31,7 +31,6 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 ### Limites connues
 
 - La mini-carte en 2D pendant les courses ne s'affiche pas correctement.
-- La PS5 standard n'a pas été testée selon la documentation fournie.
 - La présence d'un paquet par firmware ne confirme pas son fonctionnement : voir les [notes sur les firmwares](docs/FIRMWARE.md).
 
 ## Prérequis
