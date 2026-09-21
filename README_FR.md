@@ -42,12 +42,13 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 - Une extraction personnelle de Mario Kart Wii PAL contenant `DATA/sys/main.dol` et `DATA/files/rel/StaticR.rel`.
 - Environ 3 Go disponibles sur la console.
 
-## Téléchargement
+## Distribution des sources uniquement
 
-[Télécharger Kart PS5 et les variantes de firmware](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
+**Aucun binaire prêt à jouer n'est actuellement proposé.** Les archives ont été retirées après confirmation que la recompilation statique intègre des données DOL/REL du jeu dans `eboot.bin`. Retirer l'image disque ou le dossier `DATA/` ne suffit donc pas à supprimer ces données intégrées.
 
-Cette distribution est en préversion : le paquet nettoyé n'a pas été retesté sur console. Ajouter sa propre bibliothèque signée **libc.prx**, adaptée au firmware, dans **PPSA99611/sce_module/libc.prx** avant de suivre le guide. Les données du jeu et les sauvegardes personnelles ne sont pas incluses. Les variantes contiennent uniquement l'exécutable et les métadonnées de remplacement.
+Ce dépôt fournit les sources du portage, les modifications des dépendances et la documentation. Il faut sa propre copie de Mario Kart Wii PAL (RMCP01). Voir le [guide d'extraction personnelle](docs/INSTALL_FR.md) et les [notes de compilation](docs/BUILDING.md). La compilation depuis un environnement vierge reste à valider.
 
+Ne pas publier d'image disque, de fichiers extraits, de sources traduites du jeu, de blocs de données générés, d'exécutables du jeu, de bibliothèques Sony ou de NAND personnelle dans ce dépôt, les releases, les issues ou les pull requests. La licence du projet ne confère aucun droit sur les données du jeu ou les marques de tiers.
 ## Installation
 
 Suivre le [guide complet en français](docs/INSTALL_FR.md) ou le [guide en anglais](docs/INSTALL_EN.md).
@@ -112,6 +113,7 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
+
 
 
 

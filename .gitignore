@@ -24,3 +24,16 @@ artifacts/
 *.pyc
 ps5/local.json
 
+
+# Never publish game-derived inputs or outputs
+*.dol
+*.rel
+*.gcm
+*.wad
+*.nkit.iso
+**/generated/
+**/data_sections_init_blobs/
+*.elf
+*.self
+*.rpx
+
