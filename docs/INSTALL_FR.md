@@ -4,11 +4,11 @@ Portage natif de **Mario Kart Wii (version PAL, RMCP01)** sur PS5 jailbreakée. 
 recompilé statiquement (WiiCompiled) et le rendu passe directement par le GPU de la PS5 :
 ce n'est pas un émulateur.
 
-**Les données du jeu ne sont pas fournies.** Il faut sa propre copie de Mario Kart Wii PAL.
+**Les fichiers du disque ne sont pas fournis séparément. Le binaire recompilé conserve du code/des données intégrés provenant du jeu.** Il faut sa propre copie de Mario Kart Wii PAL.
 
 ## Ce que vous devez fournir vous-même
 
-Le dépôt est distribué sous forme de sources uniquement. Les anciens binaires ont été retirés car ils embarquaient des données extraites du jeu. Les étapes d'installation ci-dessous concernent uniquement un paquet construit localement ; télécharger les sources GitHub ne fournit pas un jeu prêt à lancer.
+Les téléchargements incluent le binaire recompilé, sans image disque ni fichiers extraits séparés. Télécharger le paquet applicatif depuis la release, puis fournir les fichiers ci-dessous.
 
 1. Utiliser son propre disque Mario Kart Wii **PAL, RMCP01**. Pour créer une image à partir du disque, consulter le [guide officiel Dolphin](https://dolphin-emu.org/docs/guides/ripping-games/), qui décrit notamment CleanRip. Aucun lien vers une copie du jeu n'est fourni ici.
 2. Copier l'image obtenue sur son PC, puis l'ajouter à la liste des jeux de Dolphin. L'extraction de la partition est expliquée à l'étape 1 ci-dessous.
@@ -16,9 +16,9 @@ Le dépôt est distribué sous forme de sources uniquement. Les anciens binaires
 4. Pour construire le portage, suivre les [notes de compilation](BUILDING.md). Le script `ps5/Prepare-Game.ps1 -DiscImage <chemin>` vérifie les empreintes de la révision PAL attendue ; il nécessite les outils indiqués dans les notes. Ne pas lancer ce script sur une extraction déjà préparée sans lire ses vérifications.
 5. Fournir localement une bibliothèque Sony signée `libc.prx` adaptée au firmware, à l'emplacement `PPSA99611/sce_module/libc.prx` du paquet personnel. Elle n'est pas distribuée ici.
 
-La compilation actuelle génère des données et du code à partir du disque. Ses fichiers `generated/`, ses blocs `.bin` et l'exécutable résultant doivent rester locaux. La procédure complète de compilation à partir de zéro n'est pas encore validée ; ces instructions ne promettent pas un paquet immédiatement constructible.
+La compilation actuelle génère des données et du code à partir du disque. Ne pas publier séparément les fichiers extraits du disque ou les blocs de données générés. La procédure complète de compilation à partir de zéro n'est pas encore validée ; ces instructions ne promettent pas un paquet immédiatement constructible.
 
-## Contenu d'un paquet construit localement
+## Contenu du paquet applicatif
 
 | Élément | Rôle |
 |---|---|
@@ -115,21 +115,25 @@ puis l'icône **Kart PS5** s'affiche sur l'écran d'accueil. Il suffit de la lan
 
 Après un redémarrage de la PS5, renvoyer kstuff puis ShadowMountPlus avant de lancer le jeu.
 
-## Commandes (manette DualSense)
+## Commandes (DualSense)
 
-La manette se comporte comme une **manette GameCube**. Le jeu utilise donc ses commandes GameCube.
+Commandes par défaut : le portage utilise le mode manette GameCube de Mario Kart Wii. Aucun mouvement de Wiimote n'est nécessaire.
 
-| DualSense | GameCube |
-|---|---|
-| Croix | A |
-| Rond | B |
-| Carré | X |
-| Triangle | Y |
-| Options | Start |
-| R1 | Z |
-| L2 / R2 | L / R |
-| Croix directionnelle et joystick gauche | Croix et stick |
+| Bouton DualSense | Action dans Mario Kart Wii |
+| --- | --- |
+| Joystick gauche | Diriger le véhicule ; naviguer dans les menus |
+| Croix (✕) | Accélérer ; valider dans les menus |
+| Rond (○) ou R2 | Freiner / reculer ; saut et dérapage en mode manuel. Rond permet aussi de revenir en arrière dans les menus |
+| Triangle (△) ou L2 | Utiliser un objet ; maintenir pour garder derrière soi les objets qui le permettent |
+| Carré (□) ou R1 | Regarder derrière soi |
+| Croix directionnelle, au décollage d'un saut | Effectuer une figure |
+| Croix directionnelle haut, sur une moto | Lever la roue avant (wheeling) |
+| Croix directionnelle bas, sur une moto | Terminer le wheeling |
+| Options | Ouvrir le menu pause |
 
+Pour un dérapage manuel, maintenir Croix pour accélérer, appuyer sur R2 ou Rond et orienter le joystick gauche. Relâcher le bouton de dérapage après les étincelles pour déclencher le mini-turbo. Le mode automatique ne propose pas de mini-turbo manuel.
+
+Correspondances vérifiées dans le code d'entrée du portage et confrontées au [manuel Nintendo de Mario Kart Wii, commandes GameCube et techniques de conduite](https://www.mariomayhem.com/downloads/mario_instruction_booklets/Mario_Kart_Wii-WII.pdf). Cette vérification documentaire n'est pas un nouvel essai sur console. Une configuration personnelle des boutons peut modifier ces commandes.
 ## État de cette version
 
 - **60 images/s** mesurées sur PS5 Pro une fois kstuff en pause (étape 4) : menus, chargements, intro et course, y compris dans les passages chargés.
@@ -153,5 +157,7 @@ et l'envoyer avec une description (moment du bug, circuit, photo de l'écran si 
   Ne pas toucher à `DATA` ni à `UserData`.
 - **Désinstaller** : supprimer le dossier `/data/PPSA99611` par FTP. Cela efface aussi les sauvegardes.
   Le retrait de l'icône dépend de ShadowMountPlus et n'a pas été testé avec cette version.
+
+
 
 

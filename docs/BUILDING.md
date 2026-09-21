@@ -35,8 +35,6 @@ These are existing entry points, **not a validated clean-build recipe**. The sha
 
 The final supplied executable differs from the compared local builds. Its SHA-256 is recorded in `docs/RELEASE-NOTES.md`. Source-to-binary correspondence and a complete clean build remain to be established before publishing this as a reproducible release.
 
-## Keep game-derived outputs local
+## Separate files and embedded data
 
-`generate-data-init` embeds the original DOL/REL sections into generated source/blob files, then into the executable. Therefore, even a package without `DATA/` contains game-derived data. Do not upload `generated/`, translated game code, blob files or resulting game executables. The previously published binaries have been withdrawn.
-
-A future binary distribution without these raw sections requires a build/runtime change to load and verify the user's own local game files. This is not implemented by merely removing the DATA folder. The source checkout itself excludes generated game files.
+The data initializer embeds original DOL/REL sections into the executable. The release retains the recompilation and its embedded code/data but excludes separate disc images, extracted files, generated data blobs, Sony libraries and personal saves. A binary without raw embedded game sections would require a separate runtime/build change, which has not been implemented.

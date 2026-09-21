@@ -2,11 +2,11 @@
 
 Native port of **Mario Kart Wii (PAL version, RMCP01)** for a jailbroken PS5. The game is statically recompiled (WiiCompiled), and rendering goes directly through the PS5 GPU: this is **not an emulator**.
 
-**Game data is not provided.** You must use your own copy of Mario Kart Wii PAL.
+**Separate disc files are not provided. The recompiled executable retains embedded game-derived code/data.** You must use your own copy of Mario Kart Wii PAL.
 
 ## What you must supply locally
 
-This is a source-only distribution. Previous binaries were withdrawn because they embedded data extracted from the game. The installation steps below apply only to a locally built package; downloading the GitHub source archive does not provide a ready-to-play game.
+Downloads include the recompiled executable without separate disc images or extracted game files. Download the application package from the release, then supply the files below.
 
 1. Use your own **PAL RMCP01** Mario Kart Wii disc. Follow the [official Dolphin ripping guide](https://dolphin-emu.org/docs/guides/ripping-games/), which documents CleanRip, to create an image from your disc. No game download links are provided.
 2. Transfer that image to your PC and add it to Dolphin's game list. Follow step 1 below to extract its data partition.
@@ -14,9 +14,9 @@ This is a source-only distribution. Previous binaries were withdrawn because the
 4. Read the [build notes](BUILDING.md). The `ps5/Prepare-Game.ps1 -DiscImage <path>` script validates the expected PAL revision hashes and requires the documented tools. Review its checks before using it with an existing extraction.
 5. Supply your own signed, firmware-compatible Sony `libc.prx` at `PPSA99611/sce_module/libc.prx` in your personal package. This library is not distributed here.
 
-The current build generates game code and data from the disc. Keep `generated/`, its binary blobs and the resulting executable local. The complete clean-build process is not yet validated; these notes do not promise an immediately reproducible player package.
+The current build generates game code and data from the disc. Do not publish extracted disc files or generated data blobs separately. The complete clean-build process is not yet validated; these notes do not promise an immediately reproducible player package.
 
-## Contents of a locally built package
+## Application package contents
 
 | Item | Purpose |
 |---|---|
@@ -124,21 +124,25 @@ Simply launch it.
 
 After restarting the PS5, send kstuff and then ShadowMountPlus again before launching the game.
 
-## Controls (DualSense controller)
+## Controls (DualSense)
 
-The controller behaves like a **GameCube controller**, so the game uses the GameCube control scheme.
+Default controls: the port uses Mario Kart Wii's GameCube controller mode. No Wii Remote motion gestures are needed.
 
-| DualSense | GameCube |
-|---|---|
-| Cross | A |
-| Circle | B |
-| Square | X |
-| Triangle | Y |
-| Options | Start |
-| R1 | Z |
-| L2 / R2 | L / R |
-| D-pad and left stick | D-pad and stick |
+| DualSense button | Action in Mario Kart Wii |
+| --- | --- |
+| Left stick | Steer; navigate menus |
+| Cross (✕) | Accelerate; confirm menu selections |
+| Circle (○) or R2 | Brake / reverse; hop and drift in manual mode. Circle also goes back in menus |
+| Triangle (△) or L2 | Use an item; hold to trail items that support it |
+| Square (□) or R1 | Look behind |
+| D-pad, as you leave a jump | Perform a trick |
+| D-pad up, while riding a bike | Start a wheelie |
+| D-pad down, while riding a bike | End a wheelie |
+| Options | Open the pause menu |
 
+For manual drifting, hold Cross to accelerate, press R2 or Circle and steer with the left stick. Release the drift button once sparks have charged to trigger a mini-turbo. Automatic drift does not provide manual mini-turbos.
+
+Mappings were checked against the port's input code and the [Nintendo Mario Kart Wii manual, GameCube controls and driving techniques](https://www.mariomayhem.com/downloads/mario_instruction_booklets/Mario_Kart_Wii-WII.pdf). This is a source/documentation check, not a new console test. Custom button bindings may change these controls.
 ## Current status
 
 - **60 FPS** measured on PS5 Pro once kstuff is paused (step 4): menus, loading screens, intro, and races, including demanding sections.  
@@ -164,5 +168,7 @@ To report a crash or bug, retrieve this folder through FTP and send it together 
   Do not modify `DATA` or `UserData`.
 - **Uninstall:** delete the `/data/PPSA99611` folder through FTP. This will also delete all save data.  
   Removal of the home-screen icon depends on ShadowMountPlus and has not been tested with this version.
+
+
 
 

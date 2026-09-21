@@ -8,5 +8,4 @@ Only PS5 Pro firmware 9.40 is documented as tested. Folder names and patched ver
 
 Seule la PS5 Pro en firmware 9.40 est documentée comme testée. Le nom du dossier et la modification des métadonnées de version ne démontrent pas la compatibilité. Conserver ensemble l'exécutable, la bibliothèque et les métadonnées correspondantes ; la procédure d'installation de ces variantes reste à valider.
 
-The former firmware overlay archive has been withdrawn because the executables embed game-derived data. This list records the supplied local variants; it is not a download offering.
-Les variantes binaires ont été retirées : cette liste décrit les fichiers locaux fournis, pas des téléchargements disponibles.
+The release retains the recompiled firmware overlays, without separate disc files or Sony libraries. Embedded code/data remains in the executable. Les variantes recompilées sont conservées ; aucun fichier disque séparé ni bibliothèque Sony ne sont inclus.
