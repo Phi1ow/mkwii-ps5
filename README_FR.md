@@ -47,18 +47,21 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 
 Les exécutables recompilés sont fournis. Les images disque (ISO/RVZ/WBFS), les fichiers extraits `main.dol` / `StaticR.rel` et le dossier DATA du jeu ne sont **pas** fournis. Extraire sa propre copie PAL RMCP01 en suivant le [guide d'installation](docs/INSTALL_FR.md). Fournir une bibliothèque signée `libc.prx` adaptée au firmware dans `PPSA99611/sce_module/libc.prx` ([comment l'obtenir depuis sa propre console](docs/LIBC_EXTRACTION.md#obtenir-son-propre-libcprx)) ; les bibliothèques Sony et les sauvegardes personnelles ne sont pas incluses.
 
-L'exécutable est issu d'une recompilation statique et conserve du code/des données intégrés provenant du jeu. Exclure les fichiers ROM séparés ne supprime pas ce contenu : le binaire n'est pas présenté comme dépourvu de données du jeu. Le paquet nettoyé reste en préversion en attendant un nouvel essai sur console.
+L'exécutable est issu d'une recompilation statique et conserve du code/des données intégrés provenant du jeu. Exclure les fichiers ROM séparés ne supprime pas ce contenu : le binaire n'est pas présenté comme dépourvu de données du jeu. La variante publique FW 9.40 a atteint le menu sur PS5 Pro après ajout de `portable.txt` ; les autres variantes restent à vérifier.
 
 Ne pas joindre d'image disque, de fichiers extraits, de bibliothèques Sony ou de NAND personnelle aux issues ou aux pull requests.
+
 ## Installation
 
 Suivre le [guide complet en français](docs/INSTALL_FR.md) ou le [guide en anglais](docs/INSTALL_EN.md).
 
-1. Extraire la partition de données du disque avec Dolphin dans un dossier `DATA`.
-2. Placer `DATA` dans le dossier de l'application `PPSA99611`.
-3. Copier l'application dans `/data/PPSA99611` par FTP.
-4. Envoyer `Outils/droits-kart-ps5.elf` au chargeur d'ELF pour appliquer les droits d'exécution.
-5. Configurer la pause de kstuff avec ShadowMountPlus, puis lancer **Kart PS5** depuis l'écran d'accueil.
+1. Décompresser `Kart-PS5.zip` et repérer `Kart-PS5-candidate/PPSA99611/` : c'est le dossier de l'application, pas `Kart-PS5-candidate/`.
+2. Décompresser `Backport.zip`, choisir `Backport-candidate/FW_<votre firmware>/PPSA99611/` (par exemple `FW_11.60`), puis copier **son `eboot.bin` et son `sce_sys/param.json`** dans le dossier de l'application en remplaçant ces deux fichiers. La variante seule n'est pas une application complète.
+3. Extraire la partition de données de son disque PAL avec Dolphin dans `DATA`, puis placer `DATA` et sa propre bibliothèque signée `libc.prx` dans `PPSA99611/` aux emplacements indiqués dans le guide. Vérifier que `PPSA99611/portable.txt` existe (le créer vide s'il manque) : la première archive `v1.0.0-rc1` l'omettait et le jeu reste sur écran noir sans ce marqueur.
+4. Copier **le dossier `PPSA99611`** dans `/data/` par FTP. Vérifier que `/data/PPSA99611/eboot.bin` existe directement, sans niveau de dossier supplémentaire.
+5. Envoyer `Outils/droits-kart-ps5.elf` au chargeur d'ELF pour appliquer les droits d'exécution.
+6. Ajouter `/data/PPSA99611` sur une ligne de `/data/shadowmount/manual.lst` (sans effacer les autres lignes). ShadowMountPlus 1.6beta16 ne surveille pas directement `/data` par défaut.
+7. Configurer la pause de kstuff avec ShadowMountPlus, puis lancer **Kart PS5** depuis l'écran d'accueil.
 
 Le délai utilisé pendant les essais se règle dans `/data/shadowmount/config.ini` :
 
@@ -119,10 +122,3 @@ Préciser le modèle de console, le firmware, la variante installée, le circuit
 ## État du dépôt
 
 Les sources PS5 et les modifications des dépendances sont incluses. Voir les [notes de compilation](docs/BUILDING.md), les [notes de version](docs/RELEASE-NOTES.md) et les [licences](THIRD-PARTY-NOTICES.md). La compilation depuis un environnement vierge reste à vérifier.
-
-
-
-
-
-
-

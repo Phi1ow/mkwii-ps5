@@ -11,8 +11,9 @@ A native PlayStation 5 port of **Mario Kart Wii PAL (RMCP01)**, based on [WiiCom
 > Bring your own Mario Kart Wii PAL disc data. Other regions are not supported by this executable.
 >
 > Compatible with **PS5 and PS5 Pro** (jailbroken consoles).
-> 
+
 > Another repo with Retro Rewind coming soon x)
+
 ---
 
 ## Features
@@ -48,18 +49,21 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 
 The recompiled executables are included. Separate disc images (ISO/RVZ/WBFS), extracted `main.dol` / `StaticR.rel` files and the extracted game DATA tree are **not** supplied. Extract your own PAL RMCP01 copy using the [installation guide](docs/INSTALL_EN.md). Supply a firmware-compatible signed `libc.prx` at `PPSA99611/sce_module/libc.prx` (see [how to get it from your own console](docs/LIBC_EXTRACTION.md)); Sony libraries and personal saves are not included.
 
-The executable is a static recompilation and retains embedded game-derived code/data. Excluding separate ROM files does not remove that content; this is not a claim that the binary contains no game data. The cleaned package remains a pre-release pending a console retest.
+The executable is a static recompilation and retains embedded game-derived code/data. Excluding separate ROM files does not remove that content; this is not a claim that the binary contains no game data. The public FW 9.40 variant reached the menu on a PS5 Pro after adding `portable.txt`; other variants still need testing.
 
 Do not upload disc images, extracted files, Sony libraries or personal NANDs in issues or pull requests.
+
 ## Installing
 
 Follow the [English installation guide](docs/INSTALL_EN.md) or [French installation guide](docs/INSTALL_FR.md).
 
-1. Extract your game's data partition with Dolphin into a folder named `DATA`.
-2. Place `DATA` inside the application folder `PPSA99611`.
-3. Copy the application to `/data/PPSA99611` using FTP.
-4. Send `Outils/droits-kart-ps5.elf` to the ELF loader to set executable permissions.
-5. Configure ShadowMountPlus to pause kstuff after launch, then launch **Kart PS5** from the home screen.
+1. Unzip `Kart-PS5.zip` and locate `Kart-PS5-candidate/PPSA99611/`. The application folder is `PPSA99611`, not `Kart-PS5-candidate`.
+2. Unzip `Backport.zip`, choose `Backport-candidate/FW_<your firmware>/PPSA99611/` (for example `FW_11.60`), and **replace the application's `eboot.bin` and `sce_sys/param.json`** with those two files. The firmware variant alone is not a complete application.
+3. Extract your own PAL disc's data partition with Dolphin into `DATA`, then place `DATA` and your own signed `libc.prx` at the locations shown in the guide. Check that `PPSA99611/portable.txt` exists (create an empty file if missing): the original `v1.0.0-rc1` archive omitted it, and the game stays on a black screen without this marker.
+4. Copy **the `PPSA99611` folder** into `/data/` using FTP. Check that `/data/PPSA99611/eboot.bin` exists directly, with no extra directory level.
+5. Send `Outils/droits-kart-ps5.elf` to the ELF loader to set executable permissions.
+6. Add `/data/PPSA99611` on its own line in `/data/shadowmount/manual.lst` (preserve any existing lines). ShadowMountPlus 1.6beta16 does not scan `/data` directly by default.
+7. Configure ShadowMountPlus to pause kstuff after launch, then launch **Kart PS5** from the home screen.
 
 The tested delay setting, in `/data/shadowmount/config.ini`, is:
 
@@ -120,10 +124,3 @@ Include console model, firmware, package variant, track and steps to reproduce. 
 ## Repository status
 
 The PS5 source code and pinned dependency modifications are included. See [build notes](docs/BUILDING.md), [release notes](docs/RELEASE-NOTES.md) and [license notices](THIRD-PARTY-NOTICES.md). A clean build has not been verified.
-
-
-
-
-
-
-

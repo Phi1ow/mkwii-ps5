@@ -30,8 +30,11 @@ Scripts expect local tools beneath `.tools/` and default to a Visual Studio CMak
 | Compile native runtime | `ps5/Compile-Runtime.ps1` |
 | Link and sign executable | `ps5/Build-GameExecutable.ps1` |
 | Assemble local player package | `ps5/Build-ReleasePackage.ps1` |
+| Verify downloadable ZIPs before publication | `python ps5/Verify-ReleaseArchives.py Kart-PS5.zip Backport.zip` |
 
 These are existing entry points, **not a validated clean-build recipe**. The shader outputs, generated import stubs and supporting .NET tools also need preparation; the original development tree already contains those outputs. The local package builder includes the locally supplied runtime library, so its output must not be uploaded blindly.
+
+Run the archive verifier on the **final ZIP files**, after excluding private game and Sony files. It checks the portable marker, required package files, SHA-256 manifest and firmware overlay metadata. This catches files dropped between package creation and publication.
 
 The final supplied executable differs from the compared local builds. Its SHA-256 is recorded in `docs/RELEASE-NOTES.md`. Source-to-binary correspondence and a complete clean build remain to be established before publishing this as a reproducible release.
 

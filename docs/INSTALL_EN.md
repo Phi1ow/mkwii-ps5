@@ -6,7 +6,7 @@ Native port of **Mario Kart Wii (PAL version, RMCP01)** for a jailbroken PS5. Th
 
 ## What you must supply locally
 
-Downloads include the recompiled executable without separate disc images or extracted game files. Download the application package from the release, then supply the files below.
+Downloads include the recompiled executable without separate disc images or extracted game files. Download **both `Kart-PS5.zip` and `Backport.zip`** from the [release](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1), then supply the files below.
 
 1. Use your own **PAL RMCP01** Mario Kart Wii disc. Follow the [official Dolphin ripping guide](https://dolphin-emu.org/docs/guides/ripping-games/), which documents CleanRip, to create an image from your disc. No game download links are provided.
 2. Transfer that image to your PC and add it to Dolphin's game list. Follow step 1 below to extract its data partition.
@@ -22,7 +22,9 @@ The current build generates game code and data from the disc. Do not publish ext
 |---|---|
 | `PPSA99611/` | The “Kart PS5” application: executable, shaders, configuration, and save folder |
 | `Outils/droits-kart-ps5.elf` | Payload that makes `eboot.bin` and `sce_module/libc.prx` executable inside `/data/PPSA99611` (and nothing else) |
-| `docs/INSTALL_EN.md` | This guide |
+| `README_EN.md` | This guide inside the downloaded archive |
+
+The main archive contains `Kart-PS5-candidate/PPSA99611/`. The variant archive contains `Backport-candidate/FW_<version>/PPSA99611/`, with only `eboot.bin` and `sce_sys/param.json` per firmware. These archive parent folders must not be copied into `/data/`.
 
 ## Requirements
 
@@ -58,32 +60,37 @@ To verify the extraction: there should be around 2,000 files and 2.7 GB of data.
 
 ## 2. Prepare the folder on PC
 
-Place the `DATA` folder **inside** `PPSA99611/`:
+1. Extract **both** archives. Start with `Kart-PS5-candidate/PPSA99611/` from `Kart-PS5.zip`.
+2. In `Backport.zip`, select **one** variant matching the console's exact firmware. For example, on 11.60, open `Backport-candidate/FW_11.60/PPSA99611/`. Copy its `eboot.bin` and `sce_sys/param.json` into the starting `PPSA99611/` folder, replacing both existing files. Keep every other file from the main package; the variant alone has no shaders or icon. A listed variant does not prove that it works on that firmware.
+3. Copy your own signed, firmware-compatible `libc.prx` to `PPSA99611/sce_module/libc.prx`. `sce_module/README.txt` is only a reminder; it is not the library.
+4. Place `DATA` **inside** `PPSA99611/` and check that `PPSA99611/portable.txt` exists (create an empty file if missing). The original `v1.0.0-rc1` archive omitted this marker: the runtime needs it to read `Config.toml` and NAND from `PPSA99611/UserData/` and write logs there. Without it, the fresh installation stayed on a black screen on a PS5 running firmware 9.40.
 
 ```text
 PPSA99611/
 ├── DATA/            <- your extracted game data
 ├── eboot.bin
-├── sce_module/
-├── sce_sys/
+├── portable.txt
+├── sce_module/libc.prx
+├── sce_sys/param.json
+├── sce_sys/icon0.png
 ├── shaders/
 ├── runtime/
 ├── wii_bootstrap/
 ├── UserData/
-
 ```
 
-The game cannot read files outside its own folder. `DATA` must therefore be located inside `PPSA99611`.
+Before transferring, check that this **same** `PPSA99611/` folder contains `DATA/sys/main.dol`, `DATA/files/rel/StaticR.rel`, `sce_module/libc.prx`, `eboot.bin`, `portable.txt`, `sce_sys/param.json`, and `sce_sys/icon0.png`. Open `param.json` and check that `titleId` is `PPSA99611` and `requiredSystemSoftwareVersion` matches the selected variant (on 11.60: `0x1160000000000000`). The game cannot read files outside its own folder.
 
 ## 3. Copy to the PS5
 
 1. Start the console, send **kstuff**, then **ShadowMountPlus**.
-2. Using your FTP client, copy the entire `PPSA99611` folder into **`/data/`**. The result must look like `/data/PPSA99611/eboot.bin`, `/data/PPSA99611/DATA/sys/main.dol`, etc.  
+2. Using your FTP client, copy **the `PPSA99611` folder**, not `Kart-PS5-candidate` or `FW_<version>`, into **`/data/`**. The result must look like `/data/PPSA99611/eboot.bin`, `/data/PPSA99611/sce_module/libc.prx`, `/data/PPSA99611/DATA/sys/main.dol`, etc.
    Transferring `DATA` may take some time.
 3. Make the application executable by sending `Outils/droits-kart-ps5.elf` to the ELF loader (port 9021), just like any other payload.  
    This payload only runs `chmod 755` on `/data/PPSA99611/eboot.bin` and `/data/PPSA99611/sce_module/libc.prx`.  
    Without this step, the game will usually fail to launch with error **CE-107750-0**.  
    An FTP `SITE CHMOD 755` command may not be enough: some FTP servers respond with “OK” without actually applying the permission change.
+4. Via FTP, create or edit `/data/shadowmount/manual.lst` and add **one line containing exactly** `/data/PPSA99611`. Preserve the file's existing lines. [ShadowMountPlus 1.6beta16](https://github.com/drakmor/ShadowMountPlus/tree/1.6beta16#manual-install-list) watches this list, but its default scan paths do not include `/data` itself. Without this line, it may never detect the folder at `/data/PPSA99611`.
 
 ## 4. Pause kstuff immediately after launch (important)
 
@@ -118,7 +125,7 @@ While the game is running, going to the home screen re-enables kstuff. ShadowMou
 
 ## 5. Launch
 
-ShadowMountPlus scans `/data` approximately every 15 seconds. An **“installed game PPSA99611”** notification will appear, followed by the **Kart PS5** icon on the home screen.
+ShadowMountPlus watches `/data/shadowmount/manual.lst`. After adding the path, an **“installed game PPSA99611”** notification should appear, followed by the **Kart PS5** icon on the home screen.
 
 Simply launch it.
 
@@ -154,6 +161,10 @@ Mappings were checked against the port's input code and the [Nintendo Mario Kart
 
 ## Troubleshooting
 
+**ShadowMountPlus shows no icon:** Check that `/data/shadowmount/manual.lst` contains `/data/PPSA99611`, then check the exact FTP paths `/data/PPSA99611/sce_sys/param.json` and `/data/PPSA99611/eboot.bin` (with no extra folder level). Make sure `eboot.bin` **and** `param.json` came from the same firmware variant. If installation is announced without an icon, capture `/data/shadowmount/debug.log`, the ShadowMountPlus version, firmware, and error messages. For a launch failure, also check `sce_module/libc.prx` and `DATA/sys/main.dol`. The archive does not establish that the variant works on that console.
+
+**Black screen immediately after launch:** Check `/data/PPSA99611/portable.txt`. The original `v1.0.0-rc1` archive omitted it; an empty text file at that path is enough. On firmware 9.40, adding it let the public executable load `/app0/UserData/Config.toml` and reach the menu.
+
 **The game is slow or appears to run in “slow motion”:** kstuff is not paused. See step 4, especially the delay configured in `autotune.ini`.
 
 Each launch writes a log to `/data/PPSA99611/UserData/Logs/` in a folder named `base_<date>_pid<N>`.
@@ -168,8 +179,3 @@ To report a crash or bug, retrieve this folder through FTP and send it together 
   Do not modify `DATA` or `UserData`.
 - **Uninstall:** delete the `/data/PPSA99611` folder through FTP. This will also delete all save data.  
   Removal of the home-screen icon depends on ShadowMountPlus and has not been tested with this version.
-
-
-
-
-
