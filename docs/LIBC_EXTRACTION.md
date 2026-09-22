@@ -8,7 +8,6 @@ The system does not provide `libc.prx` to applications: every title ships its ow
 
 > Never commit it, attach it to an issue or pull request, or upload it anywhere. `*.prx` is already in `.gitignore`.
 
-This is the same requirement as in [ps5link-sdk](https://github.com/Rufidj/ps5link-sdk#packaging-and-installing) and [sm64-ps5](https://github.com/Rufidj/sm64-ps5), which this port builds on.
 
 ## In short
 
@@ -103,11 +102,6 @@ Copy the package to `/data/PPSA99611`, then send `Outils/droits-kart-ps5.elf` to
 
 Compatibility of a given `libc.prx` with a given firmware is not verified by this project (`Get-ConsoleLibc.ps1` records `firmwareCompatibilityVerified = false`).
 
-## Sources
-
-- [ps5link-sdk: Packaging and installing / Debugging](https://github.com/Rufidj/ps5link-sdk)
-- [sm64-ps5](https://github.com/Rufidj/sm64-ps5): same `libc.prx` requirement
-- [SharpProspero](https://github.com/SvenGDK/SharpProspero): the `self` sign / inspect command
 
 ---
 
@@ -119,7 +113,6 @@ Le système ne fournit pas `libc.prx` aux applications : chaque titre embarque s
 
 > Ne le commitez jamais, ne le joignez pas à une issue ou une pull request, ne le publiez nulle part. `*.prx` est déjà dans `.gitignore`.
 
-C'est la même exigence que dans [ps5link-sdk](https://github.com/Rufidj/ps5link-sdk#packaging-and-installing) et [sm64-ps5](https://github.com/Rufidj/sm64-ps5), sur lesquels ce portage s'appuie.
 
 ## En bref
 
@@ -213,9 +206,3 @@ Copiez le paquet vers `/data/PPSA99611`, puis envoyez `Outils/droits-kart-ps5.el
 **Lire le journal du noyau :** envoyez klogsrv avec le chargeur d'ELF, puis lancez `nc <ip-console> 3232` avant de démarrer le jeu. Les messages sont explicites et méritent d'être lus en entier.
 
 La compatibilité d'un `libc.prx` donné avec un firmware donné n'est pas vérifiée par ce projet (`Get-ConsoleLibc.ps1` note `firmwareCompatibilityVerified = false`).
-
-## Sources
-
-- [ps5link-sdk : Packaging and installing / Debugging](https://github.com/Rufidj/ps5link-sdk)
-- [sm64-ps5](https://github.com/Rufidj/sm64-ps5) : même exigence pour `libc.prx`
-- [SharpProspero](https://github.com/SvenGDK/SharpProspero) : commande `self` de signature et d'inspection
