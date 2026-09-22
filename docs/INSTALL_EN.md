@@ -12,7 +12,7 @@ Downloads include the recompiled executable without separate disc images or extr
 2. Transfer that image to your PC and add it to Dolphin's game list. Follow step 1 below to extract its data partition.
 3. Keep the image, `DATA/`, `main.dol` and `StaticR.rel` local. Do not attach them to GitHub issues or pull requests.
 4. Read the [build notes](BUILDING.md). The `ps5/Prepare-Game.ps1 -DiscImage <path>` script validates the expected PAL revision hashes and requires the documented tools. Review its checks before using it with an existing extraction.
-5. Supply your own signed, firmware-compatible Sony `libc.prx` at `PPSA99611/sce_module/libc.prx` in your personal package. This library is not distributed here.
+5. Supply your own signed, firmware-compatible Sony `libc.prx` at `PPSA99611/sce_module/libc.prx` in your personal package. This library is not distributed here; see [Getting your own libc.prx](LIBC_EXTRACTION.md).
 
 The current build generates game code and data from the disc. Do not publish extracted disc files or generated data blobs separately. The complete clean-build process is not yet validated; these notes do not promise an immediately reproducible player package.
 

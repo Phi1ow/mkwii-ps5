@@ -45,7 +45,7 @@ Le jeu est limité à 60 images/s car sa logique dépend de ce rythme. Les premi
 
 [Télécharger l'application recompilée et les variantes de firmware](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
 
-Les exécutables recompilés sont fournis. Les images disque (ISO/RVZ/WBFS), les fichiers extraits `main.dol` / `StaticR.rel` et le dossier DATA du jeu ne sont **pas** fournis. Extraire sa propre copie PAL RMCP01 en suivant le [guide d'installation](docs/INSTALL_FR.md). Fournir une bibliothèque signée `libc.prx` adaptée au firmware dans `PPSA99611/sce_module/libc.prx` ; les bibliothèques Sony et les sauvegardes personnelles ne sont pas incluses.
+Les exécutables recompilés sont fournis. Les images disque (ISO/RVZ/WBFS), les fichiers extraits `main.dol` / `StaticR.rel` et le dossier DATA du jeu ne sont **pas** fournis. Extraire sa propre copie PAL RMCP01 en suivant le [guide d'installation](docs/INSTALL_FR.md). Fournir une bibliothèque signée `libc.prx` adaptée au firmware dans `PPSA99611/sce_module/libc.prx` ([comment l'obtenir depuis sa propre console](docs/LIBC_EXTRACTION.md#obtenir-son-propre-libcprx)) ; les bibliothèques Sony et les sauvegardes personnelles ne sont pas incluses.
 
 L'exécutable est issu d'une recompilation statique et conserve du code/des données intégrés provenant du jeu. Exclure les fichiers ROM séparés ne supprime pas ce contenu : le binaire n'est pas présenté comme dépourvu de données du jeu. Le paquet nettoyé reste en préversion en attendant un nouvel essai sur console.
 

@@ -46,7 +46,7 @@ The game is capped at 60 FPS because its logic depends on that timing. The first
 
 [Download the recompiled application and firmware overlays](https://github.com/Phi1ow/mkwii-ps5/releases/tag/v1.0.0-rc1).
 
-The recompiled executables are included. Separate disc images (ISO/RVZ/WBFS), extracted `main.dol` / `StaticR.rel` files and the extracted game DATA tree are **not** supplied. Extract your own PAL RMCP01 copy using the [installation guide](docs/INSTALL_EN.md). Supply a firmware-compatible signed `libc.prx` at `PPSA99611/sce_module/libc.prx`; Sony libraries and personal saves are not included.
+The recompiled executables are included. Separate disc images (ISO/RVZ/WBFS), extracted `main.dol` / `StaticR.rel` files and the extracted game DATA tree are **not** supplied. Extract your own PAL RMCP01 copy using the [installation guide](docs/INSTALL_EN.md). Supply a firmware-compatible signed `libc.prx` at `PPSA99611/sce_module/libc.prx` (see [how to get it from your own console](docs/LIBC_EXTRACTION.md)); Sony libraries and personal saves are not included.
 
 The executable is a static recompilation and retains embedded game-derived code/data. Excluding separate ROM files does not remove that content; this is not a claim that the binary contains no game data. The cleaned package remains a pre-release pending a console retest.
 

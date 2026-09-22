@@ -14,7 +14,7 @@ Les téléchargements incluent le binaire recompilé, sans image disque ni fichi
 2. Copier l'image obtenue sur son PC, puis l'ajouter à la liste des jeux de Dolphin. L'extraction de la partition est expliquée à l'étape 1 ci-dessous.
 3. Conserver l'image, `DATA/`, `main.dol` et `StaticR.rel` en local. Ils ne doivent pas être envoyés sur GitHub, même pour signaler un bug.
 4. Pour construire le portage, suivre les [notes de compilation](BUILDING.md). Le script `ps5/Prepare-Game.ps1 -DiscImage <chemin>` vérifie les empreintes de la révision PAL attendue ; il nécessite les outils indiqués dans les notes. Ne pas lancer ce script sur une extraction déjà préparée sans lire ses vérifications.
-5. Fournir localement une bibliothèque Sony signée `libc.prx` adaptée au firmware, à l'emplacement `PPSA99611/sce_module/libc.prx` du paquet personnel. Elle n'est pas distribuée ici.
+5. Fournir localement une bibliothèque Sony signée `libc.prx` adaptée au firmware, à l'emplacement `PPSA99611/sce_module/libc.prx` du paquet personnel. Elle n'est pas distribuée ici ; voir [Obtenir son propre libc.prx](LIBC_EXTRACTION.md#obtenir-son-propre-libcprx).
 
 La compilation actuelle génère des données et du code à partir du disque. Ne pas publier séparément les fichiers extraits du disque ou les blocs de données générés. La procédure complète de compilation à partir de zéro n'est pas encore validée ; ces instructions ne promettent pas un paquet immédiatement constructible.
 
