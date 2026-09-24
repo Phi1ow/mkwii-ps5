@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Kernel allocation contract from ps5link-sdk/examples/gpu_cube/main.c.
 #include "gpu_texture.h"
+#include "cpu_cache_flush.h"
 #include <stdexcept>
 #include <cstdio>
 extern "C" {
@@ -28,9 +29,7 @@ GpuTexture::GpuTexture(uint32_t w,uint32_t h,uint32_t levels,std::span<const uin
         address_=mapped;
         descriptor_=layout_.descriptor(reinterpret_cast<uintptr_t>(address_));
         layout_.tile({static_cast<uint8_t*>(address_),allocated_},pixels);
-        for(size_t offset=0;offset<allocated_;offset+=64)
-            __builtin_ia32_clflush(static_cast<const char*>(address_)+offset);
-        __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        flush_cpu_cache_lines(address_,allocated_);
     }catch(...) {
         if(release_after_gpu_idle())std::fputs("[mkw-agc] GPU texture rollback failed; retained by kernel until process cleanup\n",stderr);
         throw;

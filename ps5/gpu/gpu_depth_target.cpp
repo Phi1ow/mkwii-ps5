@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "depth_target.h"
+#include "cpu_cache_flush.h"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -36,8 +37,7 @@ std::array<uint32_t,16> GpuDepthTarget::context_values(std::span<const uint32_t,
 void GpuDepthTarget::clear_after_gpu_idle(float depth){
     if(!address_||!std::isfinite(depth)||depth<0||depth>1)throw std::invalid_argument("Invalid idle depth clear");
     std::fill_n(static_cast<uint32_t*>(address_),allocated_/4,std::bit_cast<uint32_t>(depth));
-    for(size_t i=0;i<allocated_;i+=64)__builtin_ia32_clflush(static_cast<const char*>(address_)+i);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    flush_cpu_cache_lines(address_,allocated_);
 }
 int GpuDepthTarget::release_after_gpu_idle() noexcept{
     if(address_){auto r=sceKernelMunmap(address_,allocated_);if(r)return r;address_=nullptr;}

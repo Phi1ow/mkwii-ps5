@@ -4,6 +4,7 @@
 // the PS5 (perf_microbench_ps5.cpp, behind a flag file) and on the PC, which
 // separates "slow CPU" from "slow platform service" when a stage is costly.
 #pragma once
+#include "cpu_cache_flush.h"
 #include "hash.hpp"
 #include <array>
 #include <chrono>
@@ -54,6 +55,19 @@ inline void run_core(std::FILE* out) {
         measure(out, "clflush 4KiB (64 lines)", 20000, [&](unsigned) {
             for (size_t i = 0; i < data.size(); i += 64) __builtin_ia32_clflush(data.data() + i);
             __atomic_thread_fence(__ATOMIC_SEQ_CST);
+            g_sink += data[0];
+        });
+        // Dirty lines, as after filling an upload arena: the old in-order loop
+        // against the shared helper (CLFLUSHOPT when CPUID reports it).
+        measure(out, "write+clflush 4KiB (dirty)", 20000, [&](unsigned i) {
+            std::memset(data.data(), int(i), data.size());
+            for (size_t j = 0; j < data.size(); j += 64) __builtin_ia32_clflush(data.data() + j);
+            __atomic_thread_fence(__ATOMIC_SEQ_CST);
+            g_sink += data[0];
+        });
+        measure(out, cpu_has_clflushopt() ? "write+clflushopt 4KiB (dirty)" : "write+clflush helper 4KiB (dirty)", 20000, [&](unsigned i) {
+            std::memset(data.data(), int(i), data.size());
+            flush_cpu_cache_lines(data.data(), data.size());
             g_sink += data[0];
         });
     }

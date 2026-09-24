@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "gpu_buffer.h"
+#include "cpu_cache_flush.h"
 #include <cstdio>
 #include <stdexcept>
 extern "C" {
@@ -34,8 +35,6 @@ void GpuBuffer::flush(size_t used) const{
 }
 void GpuBuffer::flush(size_t offset,size_t bytes) const{
     if(!address_||offset>size_||bytes>size_-offset)throw std::invalid_argument("Invalid GPU buffer flush range");
-    const auto base=static_cast<const char*>(address_);
-    for(size_t i=offset&~size_t(63);i<offset+bytes;i+=64)__builtin_ia32_clflush(base+i);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    flush_cpu_cache_lines(static_cast<const char*>(address_)+offset,bytes);
 }
 }

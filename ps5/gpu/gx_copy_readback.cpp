@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "gx_copy_readback.h"
 #include "gx_copy_color.h"
+#include "cpu_cache_flush.h"
 #include "gfx/efb_ram_encoder.hpp"
 #include <cstring>
 #include <stdexcept>
@@ -21,8 +22,7 @@ std::vector<uint8_t> encode_native_color_copy(const GxColorCopy& copy){
     if(!bytes)throw std::invalid_argument("Unsupported Wii RAM copy encoding");
     std::vector<uint8_t> encoded(bytes),linear(size_t(copy.width)*copy.height*4);
     const auto* gpu=static_cast<const uint8_t*>(target->data());
-    for(size_t off=0;off<layout.byte_size();off+=64)__builtin_ia32_clflush(gpu+off);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    flush_cpu_cache_lines(gpu,layout.byte_size());
     for(uint32_t y=0;y<copy.height;++y)for(uint32_t x=0;x<copy.width;++x)
         std::memcpy(linear.data()+(size_t(y)*copy.width+x)*4,gpu+layout.pixel_offset(x,y,0),4);
     if(!ram::encode(encoded.data(),encoded.size(),copy.format,copy.width,copy.height,

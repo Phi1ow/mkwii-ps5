@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Direct-memory contract from the requested ps5link-sdk GPU example.
 #include "color_target.h"
+#include "cpu_cache_flush.h"
 #include "gx_perf_stats.h"
 #include <algorithm>
 #include <chrono>
@@ -63,8 +64,7 @@ void GpuColorTarget::clear_after_gpu_idle(uint32_t bgra) {
     // for every 1x1 clear constant and EFB copy target.
     const size_t bytes=std::min(allocated_,(layout_.byte_size()+63)&~size_t(63));
     std::fill_n(static_cast<uint32_t*>(address_),bytes/4,bgra);
-    for(size_t i=0;i<bytes;i+=64)__builtin_ia32_clflush(static_cast<const char*>(address_)+i);
-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    flush_cpu_cache_lines(address_,bytes);
 }
 int GpuColorTarget::release_after_gpu_idle() noexcept {
     if(address_){int r=sceKernelMunmap(address_,allocated_);if(r)return r;address_=nullptr;}
